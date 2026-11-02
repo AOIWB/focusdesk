@@ -597,9 +597,8 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 4px;
-  background: #ffffffeb;
-  border-radius: 3px;
+  padding: 0;
+  background: transparent;
 }
 .task-node.highlighted .node-title,
 .task-node.selected .node-title {
@@ -673,7 +672,14 @@ kbd {
   box-shadow: 0 7px 24px #0000000d;
 }
 .composer:focus-within {
-  border-color: #b7cda844;
+  border-color: #00000010;
+}
+.composer > textarea:focus-visible,
+.task-title-input:focus-visible,
+.description-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
 }
 .composer > textarea {
   width: 100%;
@@ -759,10 +765,9 @@ kbd {
 }
 .pill {
   color: var(--accent);
-  background: var(--tint);
-  border: 1px solid var(--bubble-border);
-  padding: 4px 8px;
-  border-radius: 5px;
+  background: transparent;
+  border: 0;
+  padding: 0;
   font-size: 9px;
 }
 .task-title-input {
@@ -1478,8 +1483,8 @@ kbd {
   font-size: 13px;
   font-weight: 500;
   color: #42483d;
-  background: #fff;
-  padding: 3px 6px;
+  background: transparent;
+  padding: 0;
 }
 .x-axis .axis-label {
   right: -5px;
@@ -2018,7 +2023,7 @@ kbd {
 }
 .task-popover .pill {
   color: #747b85;
-  background: #f4f5f7;
+  background: transparent;
 }
 @media (prefers-reduced-motion: reduce) {
   .task-node,
