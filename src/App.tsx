@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -83,7 +84,14 @@ export default function App() {
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 680);
   const [notice, setNotice] = useState("");
-  const [boardSize, setBoardSize] = useState({ width: 1000, height: 650 });
+  const [boardSize, setBoardSize] = useState({
+    width: 1000,
+    height: 650,
+    top: 160,
+    viewportHeight: window.innerHeight,
+  });
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverHeight, setPopoverHeight] = useState(480);
   const boardRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -124,6 +132,8 @@ export default function App() {
       setBoardSize({
         width: entry.contentRect.width,
         height: entry.contentRect.height,
+        top: node.getBoundingClientRect().top,
+        viewportHeight: window.innerHeight,
       }),
     );
     observer.observe(node);
@@ -146,6 +156,16 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+  useLayoutEffect(() => {
+    const node = popoverRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() =>
+      setPopoverHeight(node.offsetHeight),
+    );
+    setPopoverHeight(node.offsetHeight);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [selected, view]);
   const updateTask = (id: string, change: Partial<Task>) =>
     setWorkspace((w) => changeTask(w, id, change));
   const visible = workspace.tasks.filter(
@@ -355,13 +375,23 @@ export default function App() {
     }
   }
   const activePosition = active ? position(active) : { x: 0, y: 0 };
+  const boardTop =
+    boardRef.current?.getBoundingClientRect().top ?? boardSize.top;
   const popoverStyle = {
     left: clamp(
       activePosition.x + (active ? nodeDiameter(active.size) : 0) / 2 + 24,
       8,
       Math.max(8, boardSize.width - 340),
     ),
-    top: clamp(activePosition.y - 85, 8, Math.max(8, boardSize.height - 470)),
+    top: clamp(
+      activePosition.y - 85,
+      Math.min(8, 80 - boardTop),
+      Math.max(
+        Math.min(8, 80 - boardTop),
+        boardSize.viewportHeight - boardTop - popoverHeight - 16,
+      ),
+    ),
+    maxHeight: boardSize.viewportHeight - 96,
     transformOrigin:
       activePosition.x > boardSize.width / 2 ? "right center" : "left center",
   };
@@ -744,6 +774,7 @@ export default function App() {
               })}
               {active && !active.done && (
                 <div
+                  ref={popoverRef}
                   className="task-popover"
                   style={popoverStyle}
                   onClick={(e) => e.stopPropagation()}

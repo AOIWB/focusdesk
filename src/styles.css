@@ -779,10 +779,13 @@ kbd {
 .description-input {
   font-size: 11px;
   line-height: 1.8;
-  min-height: 52px;
+  min-height: 32px;
+  height: 36px;
+  max-height: 96px;
+  field-sizing: content;
   width: 100%;
   color: #687460;
-  margin: 7px 0;
+  margin: 4px 0 10px;
 }
 .detail-grid {
   display: grid;
@@ -2077,4 +2080,67 @@ kbd {
   .node-title {
     font-size: 11px;
   }
+}
+
+/* Shared field geometry keeps native date and select controls aligned in WebKit. */
+.task-popover .detail-grid {
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.task-popover .detail-grid > label {
+  min-width: 0;
+}
+.task-popover .detail-grid input,
+.task-popover .detail-grid select,
+.task-popover .field-label > select,
+.task-popover .connection-add select {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  height: 34px;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 10px;
+  line-height: normal;
+  font-size: 11px;
+  border: 1px solid #e6e8e6;
+  border-radius: 6px;
+  background-color: #f7f8f6;
+}
+.task-popover select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23848b83' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  padding-right: 28px !important;
+}
+.task-popover input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+.task-popover .priority-control {
+  margin: 10px 0;
+}
+.task-popover .connections-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.task-popover .connection-add {
+  align-items: center;
+  margin: 6px 0;
+}
+.task-popover .start-connection {
+  padding: 5px;
+  margin-bottom: 8px;
+}
+.task-popover .folder-block {
+  padding: 10px;
+}
+.task-popover .folder-block > input {
+  margin-top: 8px;
+}
+.task-popover .popover-footer {
+  margin-top: 10px;
+}
+.task-popover {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
