@@ -70,7 +70,7 @@ export default function Outline({
     );
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "FocusDesk-notes.md";
+    anchor.download = "Pinecone-notes.md";
     anchor.click();
     URL.revokeObjectURL(url);
   }

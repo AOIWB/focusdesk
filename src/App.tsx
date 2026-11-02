@@ -325,7 +325,7 @@ export default function App() {
   }
   async function launchFolder(path: string) {
     if (!isTauri()) {
-      notify("打开本地文件夹需要运行 FocusDesk 桌面版。");
+      notify("打开本地文件夹需要运行 松果 Pinecone 桌面版。");
       return;
     }
     try {
@@ -348,7 +348,7 @@ export default function App() {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "focusdesk-backup.json";
+    link.download = "pinecone-backup.json";
     link.click();
     URL.revokeObjectURL(url);
     notify("已导出任务与模型设置（不包含 API Key）");
@@ -369,7 +369,7 @@ export default function App() {
             Number.isFinite(t.size),
         )
       )
-        throw new Error("文件不是有效的 FocusDesk 备份");
+        throw new Error("文件不是有效的 松果 Pinecone 备份");
       setWorkspace((w) => mergeWorkspace(w, data));
       notify("备份已合并，相同任务不会重复添加");
     } catch (e) {
@@ -416,13 +416,8 @@ export default function App() {
       {sidebar && (
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <strong>FocusDesk</strong>
+            <img className="brand-mark" src="/pinecone.svg" alt="" />
+            <strong aria-label="松果 Pinecone">松果</strong>
             <button
               className="icon-button"
               title="收起侧边栏"

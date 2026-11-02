@@ -1,4 +1,4 @@
-name: Build FocusDesk
+name: Build Pinecone
 on:
   push:
     branches: [main]
@@ -30,7 +30,7 @@ jobs:
       - run: npm run tauri build
       - uses: actions/upload-artifact@v4
         with:
-          name: FocusDesk-${{ matrix.os }}
+          name: Pinecone-${{ matrix.os }}
           path: |
             src-tauri/target/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.app

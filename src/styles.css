@@ -115,24 +115,10 @@ kbd {
   color: #777d77;
 }
 .brand-mark {
-  display: grid;
-  grid-template-columns: 9px 9px;
-  gap: 3px;
-  transform: rotate(-7deg);
-}
-.brand-mark span {
-  height: 9px;
-  border-radius: 3px;
-  background: #4f6943;
-}
-.brand-mark span:nth-child(2) {
-  opacity: 0.6;
-}
-.brand-mark span:nth-child(3) {
-  opacity: 0.4;
-}
-.brand-mark span:nth-child(4) {
-  opacity: 0.85;
+  width: 30px;
+  height: 38px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 .icon-button {
   display: inline-flex;

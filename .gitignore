@@ -8,3 +8,5 @@ src-tauri/target/
 
 *.tsbuildinfo
 src-tauri/gen/
+
+work/

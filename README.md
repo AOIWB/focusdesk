@@ -1,4 +1,8 @@
-# FocusDesk
+# 松果 Pinecone
+
+原名 FocusDesk。品牌升级保留原有应用标识与数据存储，已有任务、项目和模型配置可继续使用。
+
+![松果品牌](assets/Pinecone-brand-board.png)
 
 简洁的白色四象限工作台。
 
@@ -6,9 +10,9 @@
 
 **Tauri 2 · React 19 · TypeScript · SQLite · MIT**
 
-![FocusDesk 工作台](assets/graph-preview.jpg)
+![松果 Pinecone 工作台](assets/graph-preview.jpg)
 
-![FocusDesk 大纲笔记](assets/outline-preview.jpg)
+
 
 ## 已实现
 
@@ -114,3 +118,13 @@ src-tauri/
 ## 参与和许可
 
 欢迎提交问题和 Pull Request，见 [CONTRIBUTING.md](CONTRIBUTING.md)。代码采用 [MIT License](LICENSE)。
+
+## 品牌与宣传片
+
+中文名「松果」，英文名「Pinecone」。品牌主张：让重要的事，浮现。
+
+- [品牌素材](assets/brand/)：SVG、透明 PNG、应用图标与品牌展示板。
+- [横屏宣传片](media/Pinecone-landscape-1920x1080.mp4) · [竖屏宣传片](media/Pinecone-vertical-1080x1920.mp4)，30 秒，中文短文案与音乐，无旁白。
+- [视频渲染源码](scripts/render-promo.py)：本地使用 Python、Pillow、NumPy、FFmpeg 渲染，默认字体路径适配 macOS。
+
+宣传片为功能示意动效；竖屏画幅不表示已推出移动端应用。
