@@ -20,7 +20,6 @@ import {
   Pencil,
   RotateCcw,
   LoaderCircle,
-  Maximize2,
   PanelLeftClose,
   Plus,
   Search,
@@ -38,6 +37,7 @@ import {
   initialWorkspace,
   localParse,
   makeTask,
+  nodeDiameter,
   pointToQuadrant,
   quadrants,
   type ModelConfig,
@@ -52,6 +52,7 @@ import { TaskGraph, TaskConnections } from "./Graph";
 import GlobalSearch from "./GlobalSearch";
 import ProjectEditor from "./ProjectEditor";
 import {
+  graphLinks,
   projectNames,
   renameProject,
   deleteProject,
@@ -69,6 +70,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<"board" | "outline" | "done">("board");
   const [project, setProject] = useState("");
@@ -79,7 +81,7 @@ export default function App() {
   const [globalSearch, setGlobalSearch] = useState(false);
   const [projectEditor, setProjectEditor] = useState<string | null>(null);
   const [connectSource, setConnectSource] = useState<string | null>(null);
-  const [sidebar, setSidebar] = useState(true);
+  const [sidebar, setSidebar] = useState(() => window.innerWidth > 680);
   const [notice, setNotice] = useState("");
   const [boardSize, setBoardSize] = useState({ width: 1000, height: 650 });
   const boardRef = useRef<HTMLDivElement>(null);
@@ -154,6 +156,16 @@ export default function App() {
   );
   const active = workspace.tasks.find((t) => t.id === selected);
   const projects = projectNames(workspace);
+  const focusedNode = connectSource || hovered || selected;
+  const relatedNodes = new Set(
+    graphLinks(workspace).flatMap((link) =>
+      link.source === focusedNode
+        ? [link.target]
+        : link.target === focusedNode
+          ? [link.source]
+          : [],
+    ),
+  );
   const connect = (source: string, target: string) =>
     setWorkspace((w) => connectTasks(w, source, target));
   function chooseTask(id: string) {
@@ -240,7 +252,7 @@ export default function App() {
     setSelected(null);
     if (g.type === "resize")
       updateTask(g.id, {
-        size: clamp(g.size + (dx + dy) / Math.SQRT2, 72, 180),
+        size: clamp(g.size + ((dx + dy) / Math.SQRT2) * 6, 72, 180),
       });
     else
       updateTask(
@@ -259,7 +271,7 @@ export default function App() {
   function position(task: Task) {
     const width = boardSize.width / 2,
       height = boardSize.height / 2;
-    const radius = task.size / 2 + 8;
+    const radius = nodeDiameter(task.size) / 2 + 24;
     return {
       x:
         (1 - (task.quadrant % 2)) * width +
@@ -268,7 +280,7 @@ export default function App() {
         Math.floor(task.quadrant / 2) * height +
         clamp(
           task.y * height,
-          Math.max(radius, 104),
+          Math.max(radius, 80),
           Math.max(radius, height - radius),
         ),
     };
@@ -345,7 +357,7 @@ export default function App() {
   const activePosition = active ? position(active) : { x: 0, y: 0 };
   const popoverStyle = {
     left: clamp(
-      activePosition.x + (active?.size || 0) / 2 + 16,
+      activePosition.x + (active ? nodeDiameter(active.size) : 0) / 2 + 24,
       8,
       Math.max(8, boardSize.width - 340),
     ),
@@ -660,7 +672,7 @@ export default function App() {
                 position={position}
                 width={boardSize.width}
                 height={boardSize.height}
-                selected={selected}
+                selected={focusedNode}
               />
               {connectSource && (
                 <div className="connect-banner">
@@ -682,19 +694,25 @@ export default function App() {
                 return (
                   <div
                     key={task.id}
-                    className={`task-node ${quadrants[task.quadrant].color} ${selected === task.id ? "selected" : ""}`}
+                    className={`task-node ${selected === task.id ? "selected" : ""} ${focusedNode === task.id ? "highlighted" : ""} ${relatedNodes.has(task.id) ? "related" : ""} ${focusedNode && focusedNode !== task.id && !relatedNodes.has(task.id) ? "muted" : ""}`}
                     style={
                       {
                         left: pos.x,
                         top: pos.y,
-                        width: task.size,
-                        height: task.size,
-                        "--node-size": `${task.size}px`,
+                        width: Math.max(32, nodeDiameter(task.size)),
+                        height: Math.max(32, nodeDiameter(task.size)),
+                        "--node-size": `${nodeDiameter(task.size)}px`,
+                        "--label-width": `${Math.min(160, boardSize.width / 2 - 24)}px`,
+                        "--label-shift": `${clamp(pos.x % (boardSize.width / 2), Math.min(80, boardSize.width / 4 - 12) + 8, boardSize.width / 2 - Math.min(80, boardSize.width / 4 - 12) - 8) - (pos.x % (boardSize.width / 2))}px`,
                       } as CSSProperties
                     }
                     role="button"
                     tabIndex={0}
-                    aria-label={`任务：${task.title}`}
+                    aria-label={`任务：${task.title || "新任务"}`}
+                    onPointerEnter={() => setHovered(task.id)}
+                    onPointerLeave={() => setHovered(null)}
+                    onFocus={() => setHovered(task.id)}
+                    onBlur={() => setHovered(null)}
                     onPointerDown={(e) => startGesture(e, task, "move")}
                     onPointerMove={moveGesture}
                     onPointerUp={endGesture}
@@ -709,16 +727,8 @@ export default function App() {
                       }
                     }}
                   >
-                    <span className="node-title">{task.title}</span>
-                    {task.due && (
-                      <span className="node-date">
-                        {task.due.slice(5).replace("-", "/")}
-                      </span>
-                    )}
-                    <span className="node-project">
-                      {task.folder ? <Folder size={10} /> : <span />}
-                      {task.project}
-                    </span>
+                    <span className="node-dot" />
+                    <span className="node-title">{task.title || "新任务"}</span>
                     <button
                       className="resize-handle"
                       aria-label={`调整${task.title}大小`}
@@ -727,7 +737,7 @@ export default function App() {
                       onPointerMove={moveGesture}
                       onPointerUp={endGesture}
                     >
-                      <Maximize2 size={10} />
+                      <span />
                     </button>
                   </div>
                 );

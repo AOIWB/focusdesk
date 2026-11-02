@@ -59,6 +59,8 @@ export const quadrants = [
 ] as const;
 export const clamp = (n: number, min: number, max: number) =>
   Math.max(min, Math.min(max, n));
+export const nodeDiameter = (size: number) =>
+  10 + (clamp(size, 72, 180) - 72) / 6;
 export function makeTask(values: Partial<Task> & Pick<Task, "title">): Task {
   return {
     id: crypto.randomUUID(),
