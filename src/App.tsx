@@ -16,6 +16,9 @@ import {
   FolderOpen,
   LayoutGrid,
   ListTree,
+  Link2,
+  Pencil,
+  RotateCcw,
   LoaderCircle,
   Maximize2,
   PanelLeftClose,
@@ -45,6 +48,22 @@ import {
 import { loadWorkspace, saveWorkspace } from "./storage";
 import { completion, parseTasks } from "./ai";
 import Outline from "./Outline";
+import { TaskGraph, TaskConnections } from "./Graph";
+import GlobalSearch from "./GlobalSearch";
+import ProjectEditor from "./ProjectEditor";
+import {
+  projectNames,
+  renameProject,
+  deleteProject,
+  changeTask,
+  connectTasks,
+  disconnectTasks,
+  resetLinks,
+  matchesSearch,
+  taskSearchText,
+  mergeWorkspace,
+  removeTask,
+} from "./workspace";
 
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
@@ -57,6 +76,9 @@ export default function App() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState(false);
+  const [projectEditor, setProjectEditor] = useState<string | null>(null);
+  const [connectSource, setConnectSource] = useState<string | null>(null);
   const [sidebar, setSidebar] = useState(true);
   const [notice, setNotice] = useState("");
   const [boardSize, setBoardSize] = useState({ width: 1000, height: 650 });
@@ -110,32 +132,41 @@ export default function App() {
       if (event.key === "Escape") {
         setSelected(null);
         setSettings(false);
+        setGlobalSearch(false);
+        setProjectEditor(null);
+        setConnectSource(null);
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
-        inputRef.current?.focus();
+        setGlobalSearch(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
   const updateTask = (id: string, change: Partial<Task>) =>
-    setWorkspace((w) => ({
-      ...w,
-      tasks: w.tasks.map((t) => (t.id === id ? { ...t, ...change } : t)),
-    }));
+    setWorkspace((w) => changeTask(w, id, change));
   const visible = workspace.tasks.filter(
     (t) =>
       t.done === (view === "done") &&
       (!project || t.project === project) &&
-      `${t.title} ${t.description} ${t.project}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
+      matchesSearch(taskSearchText(t), query),
   );
   const active = workspace.tasks.find((t) => t.id === selected);
-  const projects = [
-    ...new Set(workspace.tasks.map((t) => t.project).filter(Boolean)),
-  ];
+  const projects = projectNames(workspace);
+  const connect = (source: string, target: string) =>
+    setWorkspace((w) => connectTasks(w, source, target));
+  function chooseTask(id: string) {
+    if (connectSource) {
+      const from = workspace.tasks.find((t) => t.id === connectSource),
+        to = workspace.tasks.find((t) => t.id === id);
+      if (from && to && from.quadrant === to.quadrant && id !== connectSource) {
+        connect(connectSource, id);
+        setConnectSource(null);
+        notify("已连接");
+      } else notify("请选择同象限的另一项任务");
+    } else setSelected((current) => (current === id ? null : id));
+  }
   const pending = workspace.tasks.filter((t) => !t.done).length;
   const completed = workspace.tasks.filter((t) => t.done).length;
   function addTasks(values: (Partial<Task> & Pick<Task, "title">)[]) {
@@ -220,8 +251,7 @@ export default function App() {
   function endGesture(event: PointerEvent) {
     const g = gesture.current;
     if (!g) return;
-    if (!g.moved && g.type === "move")
-      setSelected((s) => (s === g.id ? null : g.id));
+    if (!g.moved && g.type === "move") chooseTask(g.id);
     gesture.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -272,8 +302,11 @@ export default function App() {
   }
   function exportData() {
     const data = {
-      version: 1,
+      version: 2,
       tasks: workspace.tasks,
+      projects,
+      links: workspace.links,
+      manualQuadrants: workspace.manualQuadrants,
       config: { ...workspace.config, key: "" },
     };
     const url = URL.createObjectURL(
@@ -303,15 +336,7 @@ export default function App() {
         )
       )
         throw new Error("文件不是有效的 FocusDesk 备份");
-      setWorkspace((w) => ({
-        ...w,
-        tasks: [
-          ...w.tasks,
-          ...data.tasks.filter(
-            (t: Task) => !w.tasks.some((existing) => existing.id === t.id),
-          ),
-        ],
-      }));
+      setWorkspace((w) => mergeWorkspace(w, data));
       notify("备份已合并，相同任务不会重复添加");
     } catch (e) {
       notify(`导入失败：${String(e)}`);
@@ -363,6 +388,13 @@ export default function App() {
             </button>
           </div>
           <button
+            className="global-search-trigger"
+            onClick={() => setGlobalSearch(true)}
+          >
+            <Search size={17} />
+            <span>全局搜索</span>
+          </button>
+          <button
             className="new-task"
             onClick={() => {
               if (view === "done") setView("board");
@@ -403,29 +435,47 @@ export default function App() {
             <CheckCheck size={18} /> 已完成 <span>{completed}</span>
           </button>
           <div className="nav-caption projects-heading">
-            我的项目 <Folder size={14} />
+            我的项目
+            <button
+              className="icon-button"
+              title="新建项目"
+              onClick={() => setProjectEditor("")}
+            >
+              <Plus size={15} />
+            </button>
           </div>
           {projects.map((name, i) => (
-            <button
-              key={name}
-              className={`nav-item project-item ${project === name && view !== "done" ? "chosen" : ""}`}
-              onClick={() => {
-                setProject(name);
-                if (view === "done") setView("board");
-                setSelected(null);
-              }}
-            >
-              <i
-                style={{ background: ["#9db7a4", "#cfb48c", "#a5a1ce"][i % 3] }}
-              />
-              {name}
-              <span>
-                {
-                  workspace.tasks.filter((t) => !t.done && t.project === name)
-                    .length
-                }
-              </span>
-            </button>
+            <div className="project-row" key={name}>
+              <button
+                className={`nav-item project-item ${project === name && view !== "done" ? "chosen" : ""}`}
+                onClick={() => {
+                  setProject(name);
+                  if (view === "done") setView("board");
+                  setSelected(null);
+                  setQuery("");
+                }}
+              >
+                <i
+                  style={{
+                    background: ["#9db7a4", "#cfb48c", "#a5a1ce"][i % 3],
+                  }}
+                />
+                {name}
+                <span>
+                  {
+                    workspace.tasks.filter((t) => !t.done && t.project === name)
+                      .length
+                  }
+                </span>
+              </button>
+              <button
+                className="icon-button project-edit"
+                title={`编辑项目：${name}`}
+                onClick={() => setProjectEditor(name)}
+              >
+                <Pencil size={13} />
+              </button>
+            </div>
           ))}
           <div className="sidebar-bottom">
             <button className="nav-item" onClick={() => setSettings(true)}>
@@ -444,6 +494,15 @@ export default function App() {
                 title="展开侧边栏"
               >
                 <LayoutGrid size={18} />
+              </button>
+            )}
+            {!sidebar && (
+              <button
+                className="icon-button"
+                title="全局搜索"
+                onClick={() => setGlobalSearch(true)}
+              >
+                <Search size={17} />
               </button>
             )}
             <span>工作空间</span>
@@ -553,6 +612,18 @@ export default function App() {
                         </span>
                       </h2>
                     </div>
+                    {workspace.manualQuadrants.includes(i as Quadrant) && (
+                      <button
+                        className="icon-button reset-links"
+                        title={`恢复${q.title}按时间连接`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWorkspace((w) => resetLinks(w, i as Quadrant));
+                        }}
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
                     <button
                       title={`添加到${q.title}`}
                       className="quadrant-add icon-button"
@@ -583,6 +654,29 @@ export default function App() {
                   <span className="axis-label">重要性</span>
                 </div>
               </div>
+              <TaskGraph
+                workspace={workspace}
+                visible={visible}
+                position={position}
+                width={boardSize.width}
+                height={boardSize.height}
+                selected={selected}
+              />
+              {connectSource && (
+                <div className="connect-banner">
+                  <Link2 size={14} />
+                  选择同象限任务
+                  <button
+                    title="取消连线"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConnectSource(null);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               {visible.map((task) => {
                 const pos = position(task);
                 return (
@@ -611,7 +705,7 @@ export default function App() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setSelected(task.id);
+                        chooseTask(task.id);
                       }
                     }}
                   >
@@ -727,6 +821,26 @@ export default function App() {
                       }
                     />
                   </label>
+                  <TaskConnections
+                    key={active.id}
+                    task={active}
+                    workspace={workspace}
+                    onConnect={connect}
+                    onDisconnect={(a, b) =>
+                      setWorkspace((w) => disconnectTasks(w, a, b))
+                    }
+                    onNavigate={setSelected}
+                  />
+                  <button
+                    className="start-connection"
+                    onClick={() => {
+                      setConnectSource(active.id);
+                      setSelected(null);
+                    }}
+                  >
+                    <Link2 size={14} />
+                    在画布上连接
+                  </button>
                   <div className="folder-block">
                     <div>
                       <Folder size={15} />
@@ -758,10 +872,7 @@ export default function App() {
                       className="delete-task icon-button"
                       title="删除任务"
                       onClick={() => {
-                        setWorkspace((w) => ({
-                          ...w,
-                          tasks: w.tasks.filter((t) => t.id !== active.id),
-                        }));
+                        setWorkspace((w) => removeTask(w, active.id));
                         setSelected(null);
                       }}
                     >
@@ -793,12 +904,7 @@ export default function App() {
               setQuery("");
               return task.id;
             }}
-            onDelete={(id) =>
-              setWorkspace((w) => ({
-                ...w,
-                tasks: w.tasks.filter((t) => t.id !== id),
-              }))
-            }
+            onDelete={(id) => setWorkspace((w) => removeTask(w, id))}
             onPickFolder={(task) => void pickFolder(task)}
             onOpenFolder={(path) => void launchFolder(path)}
           />
@@ -806,12 +912,20 @@ export default function App() {
           <section className="completed-list">
             {visible.length ? (
               visible.map((task) => (
-                <article key={task.id}>
+                <article
+                  key={task.id}
+                  className={selected === task.id ? "search-selected-task" : ""}
+                >
                   <span className="completed-icon">
                     <Check size={18} />
                   </span>
                   <div>
                     <h3>{task.title}</h3>
+                    {selected === task.id && (
+                      <p className="completed-description">
+                        {task.description}
+                      </p>
+                    )}
                     <p>
                       {task.project || "未分类"}
                       {task.due ? ` · ${task.due}` : ""}
@@ -832,12 +946,7 @@ export default function App() {
                   <button
                     className="icon-button"
                     title="删除任务"
-                    onClick={() =>
-                      setWorkspace((w) => ({
-                        ...w,
-                        tasks: w.tasks.filter((t) => t.id !== task.id),
-                      }))
-                    }
+                    onClick={() => setWorkspace((w) => removeTask(w, task.id))}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -902,6 +1011,48 @@ export default function App() {
             <X size={14} />
           </button>
         </div>
+      )}
+      {globalSearch && (
+        <GlobalSearch
+          workspace={workspace}
+          onClose={() => setGlobalSearch(false)}
+          onTask={(task) => {
+            setGlobalSearch(false);
+            setProject("");
+            setQuery(task.done ? task.title : "");
+            setView(task.done ? "done" : "board");
+            setSelected(task.id);
+          }}
+          onProject={(name) => {
+            setGlobalSearch(false);
+            setProject(name);
+            setQuery("");
+            setView("board");
+            setSelected(null);
+          }}
+        />
+      )}
+      {projectEditor !== null && (
+        <ProjectEditor
+          original={projectEditor}
+          names={projects}
+          onClose={() => setProjectEditor(null)}
+          onSave={(name) => {
+            setWorkspace((w) =>
+              projectEditor
+                ? renameProject(w, projectEditor, name)
+                : { ...w, projects: [...projectNames(w), name] },
+            );
+            if (project === projectEditor && projectEditor) setProject(name);
+            setProjectEditor(null);
+          }}
+          onDelete={() => {
+            setWorkspace((w) => deleteProject(w, projectEditor));
+            if (project === projectEditor) setProject("");
+            setProjectEditor(null);
+            notify("项目已删除，任务已移至未分类");
+          }}
+        />
       )}
       {settings && (
         <Settings

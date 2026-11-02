@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { Workspace } from "./model";
 import { initialWorkspace } from "./model";
+import { normalizeWorkspace } from "./workspace";
 import Database from "@tauri-apps/plugin-sql";
 let database: Promise<Database> | undefined;
 const db = () => (database ??= Database.load("sqlite:focusdesk.db"));
@@ -9,10 +10,12 @@ export async function loadWorkspace(): Promise<Workspace> {
     const rows = await (
       await db()
     ).select<{ value: string }[]>("SELECT value FROM workspace WHERE id = 1");
-    return rows.length ? JSON.parse(rows[0].value) : initialWorkspace();
+    return rows.length
+      ? normalizeWorkspace(JSON.parse(rows[0].value))
+      : initialWorkspace();
   }
   const value = localStorage.getItem("focusdesk.workspace.v1");
-  return value ? JSON.parse(value) : initialWorkspace();
+  return value ? normalizeWorkspace(JSON.parse(value)) : initialWorkspace();
 }
 let queue = Promise.resolve();
 export function saveWorkspace(workspace: Workspace) {

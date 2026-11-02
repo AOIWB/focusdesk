@@ -6,7 +6,7 @@
 
 **Tauri 2 · React 19 · TypeScript · SQLite · MIT**
 
-![FocusDesk 工作台](assets/workspace-preview.jpg)
+![FocusDesk 工作台](assets/graph-preview.jpg)
 
 ![FocusDesk 大纲笔记](assets/outline-preview.jpg)
 
@@ -17,15 +17,22 @@
 - 白色 UI，真实 XY 坐标轴：横轴紧急性向右增加，纵轴重要性向上增加。
 - 四象限任务画布：拖动圆点跨象限移动，拖动右下角边缘控制点调整大小。
 - 圆点越大，代表同一象限中优先级越高。
+- 象限内任务关系图：默认按创建时间连线；支持手动连接、断开、沿连接跳转，以及恢复时间顺序。连线随圆点拖动和缩放更新。
 - 点击圆点展开详情：标题、说明、日期、所属项目、象限、优先级。
 - 桌面版选择、绑定并打开本地文件夹。
 - 自定义 API URL、API Key、Model Name，连接测试。
 - OpenAI 兼容 Chat Completions 接口；支持提供兼容端点的云服务和本地 Ollama。
 - 自然语言经模型拆成多个任务，并识别重要性、紧急性和截止日期。
 - 无模型时可直接记录，按关键词做基础分类，支持今天、明天、后天及明确日期。
-- 项目筛选、任务搜索、完成与恢复、删除。
+- 我的项目支持新建、改名、删除和筛选，空项目也会保存；改名同步更新任务，删除项目保留任务和本地文件夹。
+- 左上角全局搜索（⌘K / Ctrl+K）：搜索所有任务的标题、完整笔记、项目、日期、文件夹路径、完成状态和象限，不受当前项目筛选影响。支持方向键选择、Enter 跳转。
+- 任务完成与恢复、删除。
 - 自动保存：桌面版 SQLite；网页预览 localStorage。
-- JSON 导出与合并导入；导出不含 API Key，导入按任务 ID 去重。
+- JSON 导出与合并导入；包含项目和手动连线；导出不含 API Key，导入按任务 ID 去重。
+
+## 任务连接
+
+点击任务，在「任务连接」中选择同象限任务，或点击「在画布上连接」后选择目标圆点。连接带有方向，可构建分支关系。默认时间连接显示为虚线；第一次手动增删会保留已有连接，并将当前象限切换为手动模式。象限标题旁的恢复按钮可重新按创建时间连接。已完成任务不参与画布连线；跨象限移动会移除该任务原有手动连接。
 
 ## 开始开发
 
@@ -81,6 +88,11 @@ npm run tauri build
 src/
   App.tsx          工作台、拖拽、详情卡片、模型设置
   Outline.tsx      大纲笔记视图与行内编辑
+  Graph.tsx        关系图绘制与连接编辑
+  GlobalSearch.tsx 全局搜索
+  ProjectEditor.tsx 项目管理
+  workspace.ts     连接、项目、搜索、数据迁移
+  workspace.test.ts 工作台逻辑测试
   styles.css       界面样式与响应式布局
   model.ts         任务结构、位置转换、本地解析
   ai.ts            模型请求与任务解析
@@ -96,7 +108,7 @@ src-tauri/
 
 ## 验证状态
 
-已通过前端构建、6 项测试、Rust 编译检查和 macOS release 应用打包。详见 [VERIFICATION.md](VERIFICATION.md)。
+已通过前端构建、12 项测试、Rust 编译检查和 macOS release 应用打包。详见 [VERIFICATION.md](VERIFICATION.md)。
 
 ## 参与和许可
 

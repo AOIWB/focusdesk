@@ -18,7 +18,15 @@ export interface ModelConfig {
   key: string;
   model: string;
 }
+export interface TaskLink {
+  id: string;
+  source: string;
+  target: string;
+}
 export interface Workspace {
+  projects: string[];
+  links: TaskLink[];
+  manualQuadrants: Quadrant[];
   tasks: Task[];
   config: ModelConfig;
   welcomed: boolean;
@@ -70,6 +78,9 @@ export function makeTask(values: Partial<Task> & Pick<Task, "title">): Task {
 export const initialWorkspace = (): Workspace => ({
   config: { url: "https://api.openai.com/v1", key: "", model: "" },
   welcomed: false,
+  projects: ["工作", "个人成长", "生活"],
+  links: [],
+  manualQuadrants: [],
   tasks: [
     makeTask({
       title: "完成本周提案",
