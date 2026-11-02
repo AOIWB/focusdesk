@@ -74,7 +74,9 @@ export default function App() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<"board" | "outline" | "done">("board");
-  const [project, setProject] = useState("");
+  const [project, setProject] = useState<string | null>("");
+  const projectLabel = project === null ? "未分类" : project;
+  const taskProject = project ?? "";
   const [query, setQuery] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -171,7 +173,7 @@ export default function App() {
   const visible = workspace.tasks.filter(
     (t) =>
       t.done === (view === "done") &&
-      (!project || t.project === project) &&
+      (project === "" || t.project === taskProject) &&
       matchesSearch(taskSearchText(t), query),
   );
   const active = workspace.tasks.find((t) => t.id === selected);
@@ -212,7 +214,7 @@ export default function App() {
           makeTask({
             x: [0.3, 0.68, 0.48, 0.75, 0.23][count % 5],
             y: [0.45, 0.62, 0.73, 0.35, 0.7][count % 5],
-            project,
+            project: taskProject,
             ...value,
           }),
         );
@@ -447,7 +449,7 @@ export default function App() {
           </button>
           <div className="nav-caption">工作空间</div>
           <button
-            className={`nav-item ${view === "board" && !project ? "chosen" : ""}`}
+            className={`nav-item ${view === "board" && project === "" ? "chosen" : ""}`}
             onClick={() => {
               setView("board");
               setProject("");
@@ -457,7 +459,7 @@ export default function App() {
             <LayoutGrid size={18} /> 四象限 <span>{pending}</span>
           </button>
           <button
-            className={`nav-item ${view === "outline" && !project ? "chosen" : ""}`}
+            className={`nav-item ${view === "outline" && project === "" ? "chosen" : ""}`}
             onClick={() => {
               setView("outline");
               setProject("");
@@ -484,6 +486,23 @@ export default function App() {
               onClick={() => setProjectEditor("")}
             >
               <Plus size={15} />
+            </button>
+          </div>
+          <div className="project-row">
+            <button
+              className={`nav-item project-item ${project === null && view !== "done" ? "chosen" : ""}`}
+              onClick={() => {
+                setProject(null);
+                if (view === "done") setView("board");
+                setSelected(null);
+                setQuery("");
+              }}
+            >
+              <i style={{ background: "#a6abb3" }} />
+              未分类
+              <span>
+                {workspace.tasks.filter((t) => !t.done && !t.project).length}
+              </span>
             </button>
           </div>
           {projects.map((name, i) => (
@@ -552,7 +571,7 @@ export default function App() {
             <strong>
               {view === "done"
                 ? "已完成"
-                : project || (view === "outline" ? "笔记" : "四象限")}
+                : projectLabel || (view === "outline" ? "笔记" : "四象限")}
             </strong>
           </div>
           <div className="top-actions">
@@ -586,7 +605,7 @@ export default function App() {
           <h1>
             {view === "done"
               ? "已完成"
-              : project || (view === "outline" ? "笔记" : "四象限")}
+              : projectLabel || (view === "outline" ? "笔记" : "四象限")}
           </h1>
           <div className="heading-actions">
             {view !== "done" && (
@@ -674,7 +693,7 @@ export default function App() {
                         const t = makeTask({
                           title: "新任务",
                           quadrant: i as Quadrant,
-                          project,
+                          project: taskProject,
                         });
                         setWorkspace((w) => ({ ...w, tasks: [...w.tasks, t] }));
                         setSelected(t.id);
@@ -944,11 +963,15 @@ export default function App() {
         ) : view === "outline" ? (
           <Outline
             tasks={visible}
-            project={project}
+            project={projectLabel}
             projects={projects}
             onUpdate={updateTask}
             onCreate={(quadrant) => {
-              const task = makeTask({ title: "", quadrant, project });
+              const task = makeTask({
+                title: "",
+                quadrant,
+                project: taskProject,
+              });
               setWorkspace((w) => ({ ...w, tasks: [...w.tasks, task] }));
               setQuery("");
               return task.id;
