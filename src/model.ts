@@ -87,7 +87,7 @@ export const initialWorkspace = (): Workspace => ({
     makeTask({
       title: "完成本周提案",
       description:
-        "这是一个示例任务。点击圆点编辑详情；拖动圆点移动，拖动右下角控制点调整大小。",
+        "这是一个示例任务。点击圆点编辑详情；拖动圆点移动，在详情中使用优先级滑杆调整大小。",
       quadrant: 0,
       x: 0.43,
       y: 0.48,

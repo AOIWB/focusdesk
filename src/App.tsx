@@ -99,10 +99,8 @@ export default function App() {
   const importRef = useRef<HTMLInputElement>(null);
   const gesture = useRef<{
     id: string;
-    type: "move" | "resize";
     startX: number;
     startY: number;
-    size: number;
     x: number;
     y: number;
     moved: boolean;
@@ -244,21 +242,15 @@ export default function App() {
       setBusy(false);
     }
   }
-  function startGesture(
-    event: PointerEvent,
-    task: Task,
-    type: "move" | "resize",
-  ) {
+  function startGesture(event: PointerEvent, task: Task) {
     if (event.button !== 0) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     const pos = position(task);
     gesture.current = {
       id: task.id,
-      type,
       startX: event.clientX,
       startY: event.clientY,
-      size: task.size,
       x: pos.x,
       y: pos.y,
       moved: false,
@@ -272,20 +264,15 @@ export default function App() {
     if (Math.hypot(dx, dy) < 4 && !g.moved) return;
     g.moved = true;
     setSelected(null);
-    if (g.type === "resize")
-      updateTask(g.id, {
-        size: clamp(g.size + ((dx + dy) / Math.SQRT2) * 6, 72, 180),
-      });
-    else
-      updateTask(
-        g.id,
-        pointToQuadrant(g.x + dx, g.y + dy, boardSize.width, boardSize.height),
-      );
+    updateTask(
+      g.id,
+      pointToQuadrant(g.x + dx, g.y + dy, boardSize.width, boardSize.height),
+    );
   }
   function endGesture(event: PointerEvent) {
     const g = gesture.current;
     if (!g) return;
-    if (!g.moved && g.type === "move") chooseTask(g.id);
+    if (!g.moved) chooseTask(g.id);
     gesture.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -762,7 +749,7 @@ export default function App() {
                     onPointerLeave={() => setHovered(null)}
                     onFocus={() => setHovered(task.id)}
                     onBlur={() => setHovered(null)}
-                    onPointerDown={(e) => startGesture(e, task, "move")}
+                    onPointerDown={(e) => startGesture(e, task)}
                     onPointerMove={moveGesture}
                     onPointerUp={endGesture}
                     onPointerCancel={() => {
@@ -778,16 +765,6 @@ export default function App() {
                   >
                     <span className="node-dot" />
                     <span className="node-title">{task.title || "新任务"}</span>
-                    <button
-                      className="resize-handle"
-                      aria-label={`调整${task.title}大小`}
-                      title="拖动调整优先级大小"
-                      onPointerDown={(e) => startGesture(e, task, "resize")}
-                      onPointerMove={moveGesture}
-                      onPointerUp={endGesture}
-                    >
-                      <span />
-                    </button>
                   </div>
                 );
               })}
