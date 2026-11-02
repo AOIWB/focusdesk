@@ -799,6 +799,7 @@ kbd {
   gap: 7px;
 }
 .detail-grid input,
+.detail-grid select,
 .field-label > input,
 .field-label > select {
   width: 100%;

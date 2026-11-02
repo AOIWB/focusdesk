@@ -19,6 +19,7 @@ import {
 interface Props {
   tasks: Task[];
   project: string;
+  projects: string[];
   onUpdate: (id: string, changes: Partial<Task>) => void;
   onCreate: (quadrant: Quadrant) => string;
   onDelete: (id: string) => void;
@@ -28,6 +29,7 @@ interface Props {
 export default function Outline({
   tasks,
   project,
+  projects,
   onUpdate,
   onCreate,
   onDelete,
@@ -224,14 +226,20 @@ export default function Outline({
                             </label>
                             <label>
                               项目
-                              <input
+                              <select
                                 aria-label={`${task.title}的项目`}
                                 value={task.project}
-                                placeholder="项目"
                                 onChange={(e) =>
                                   onUpdate(task.id, { project: e.target.value })
                                 }
-                              />
+                              >
+                                <option value="">未分类</option>
+                                {projects.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
                             </label>
                           </div>
                           <div className="outline-folder">

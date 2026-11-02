@@ -792,13 +792,20 @@ export default function App() {
                     </label>
                     <label>
                       所属项目
-                      <input
-                        placeholder="例如：工作"
+                      <select
+                        aria-label="所属项目"
                         value={active.project}
                         onChange={(e) =>
                           updateTask(active.id, { project: e.target.value })
                         }
-                      />
+                      >
+                        <option value="">未分类</option>
+                        {projects.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </div>
                   <label className="field-label">
@@ -907,6 +914,7 @@ export default function App() {
           <Outline
             tasks={visible}
             project={project}
+            projects={projects}
             onUpdate={updateTask}
             onCreate={(quadrant) => {
               const task = makeTask({ title: "", quadrant, project });
