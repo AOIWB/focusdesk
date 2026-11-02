@@ -2116,3 +2116,24 @@ kbd {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+
+.task-popover.priority-preview {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  pointer-events: none;
+  scrollbar-width: none;
+}
+.task-popover.priority-preview::-webkit-scrollbar {
+  display: none;
+}
+.task-popover.priority-preview > :not(.priority-control) {
+  visibility: hidden;
+}
+.task-popover.priority-preview .priority-control {
+  color: transparent;
+  pointer-events: auto;
+}
+.task-popover.priority-preview .priority-control input {
+  outline: none;
+}

@@ -94,6 +94,7 @@ export default function App() {
   });
   const popoverRef = useRef<HTMLDivElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(480);
+  const [adjustingPriority, setAdjustingPriority] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -156,6 +157,18 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+  useEffect(() => {
+    const finish = () => setAdjustingPriority(false);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("blur", finish);
+    };
+  }, []);
+  useEffect(() => setAdjustingPriority(false), [selected, view]);
   useLayoutEffect(() => {
     const node = popoverRef.current;
     if (!node) return;
@@ -771,7 +784,7 @@ export default function App() {
               {active && !active.done && (
                 <div
                   ref={popoverRef}
-                  className="task-popover"
+                  className={`task-popover ${adjustingPriority ? "priority-preview" : ""}`}
                   style={popoverStyle}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -856,6 +869,26 @@ export default function App() {
                     象限内优先级{" "}
                     <input
                       aria-label="优先级大小"
+                      onPointerDown={() => setAdjustingPriority(true)}
+                      onPointerUp={() => setAdjustingPriority(false)}
+                      onPointerCancel={() => setAdjustingPriority(false)}
+                      onBlur={() => setAdjustingPriority(false)}
+                      onKeyDown={(e) => {
+                        if (
+                          [
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "ArrowUp",
+                            "ArrowDown",
+                            "Home",
+                            "End",
+                            "PageUp",
+                            "PageDown",
+                          ].includes(e.key)
+                        )
+                          setAdjustingPriority(true);
+                      }}
+                      onKeyUp={() => setAdjustingPriority(false)}
                       type="range"
                       min="72"
                       max="180"
