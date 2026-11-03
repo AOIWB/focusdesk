@@ -1,3 +1,4 @@
+import { notesText } from "./notes";
 import {
   type Workspace,
   type Task,
@@ -175,6 +176,7 @@ export function taskSearchText(task: Task) {
   return [
     task.title,
     task.description,
+    notesText(task.notes),
     task.project,
     task.folder,
     task.due,

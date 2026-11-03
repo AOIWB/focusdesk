@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
+  NotebookPen,
   ChevronDown,
   ChevronRight,
   Download,
@@ -25,6 +26,7 @@ interface Props {
   onDelete: (id: string) => void;
   onPickFolder: (task: Task) => void;
   onOpenFolder: (path: string) => void;
+  onOpenNotes: (id: string) => void;
 }
 export default function Outline({
   tasks,
@@ -35,6 +37,7 @@ export default function Outline({
   onDelete,
   onPickFolder,
   onOpenFolder,
+  onOpenNotes,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -184,9 +187,15 @@ export default function Outline({
                       </div>
                       {expanded.has(task.id) && (
                         <div className="outline-task-details">
+                          <button
+                            className="open-task-notes"
+                            onClick={() => onOpenNotes(task.id)}
+                          >
+                            <NotebookPen size={16} /> 打开笔记
+                          </button>
                           <textarea
-                            aria-label={`${task.title}的笔记`}
-                            placeholder="笔记"
+                            aria-label={`${task.title}的说明`}
+                            placeholder="任务说明"
                             value={task.description}
                             onChange={(e) =>
                               onUpdate(task.id, { description: e.target.value })

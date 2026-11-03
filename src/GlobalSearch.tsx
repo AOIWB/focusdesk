@@ -1,3 +1,4 @@
+import { notesText } from "./notes";
 import { useState } from "react";
 import { CheckCheck, Folder, Search, X } from "lucide-react";
 import { type Workspace, type Task, outlineGroups } from "./model";
@@ -26,6 +27,7 @@ export default function GlobalSearch({
     const text = [
       task.title,
       task.description,
+      notesText(task.notes),
       task.project,
       task.folder,
       task.due,

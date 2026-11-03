@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -8,6 +10,7 @@ import {
 } from "react";
 import {
   ArrowUp,
+  NotebookPen,
   Check,
   CheckCheck,
   ChevronRight,
@@ -67,8 +70,12 @@ import {
   removeTask,
 } from "./workspace";
 
+const TaskNotes = lazy(() => import("./TaskNotes"));
+
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
+  const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
+  const notesTask = workspace.tasks.find((task) => task.id === notesTaskId);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
@@ -941,6 +948,12 @@ export default function App() {
                   </div>
                   <div className="popover-footer">
                     <button
+                      className="open-task-notes"
+                      onClick={() => setNotesTaskId(active.id)}
+                    >
+                      <NotebookPen size={16} /> 打开笔记
+                    </button>
+                    <button
                       className="delete-task icon-button"
                       title="删除任务"
                       onClick={() => {
@@ -971,6 +984,7 @@ export default function App() {
             project={projectLabel}
             projects={projects}
             onUpdate={updateTask}
+            onOpenNotes={setNotesTaskId}
             onCreate={(quadrant) => {
               const task = makeTask({
                 title: "",
@@ -1008,6 +1022,13 @@ export default function App() {
                       {task.due ? ` · ${task.due}` : ""}
                     </p>
                   </div>
+                  <button
+                    className="icon-button"
+                    title="打开笔记"
+                    onClick={() => setNotesTaskId(task.id)}
+                  >
+                    <NotebookPen size={17} />
+                  </button>
                   {task.folder && (
                     <button
                       className="icon-button"
@@ -1081,6 +1102,17 @@ export default function App() {
           </div>
         </footer>
       </main>
+      {notesTask && (
+        <Suspense fallback={null}>
+          <TaskNotes
+            key={notesTask.id}
+            task={notesTask}
+            onUpdate={updateTask}
+            onClose={() => setNotesTaskId(null)}
+            onError={notify}
+          />
+        </Suspense>
+      )}
       {notice && (
         <div className="toast" role="status">
           <span>{notice}</span>

@@ -2123,3 +2123,14 @@ kbd {
 .task-popover.priority-preview .priority-control input {
   outline: none;
 }
+
+.open-task-notes {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: #58616d;
+  padding: 6px 0;
+}
+.open-task-notes:hover {
+  color: #3469c7;
+}

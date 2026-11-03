@@ -1,3 +1,4 @@
+import { readBrowserWorkspace, writeBrowserWorkspace } from "./browserStorage";
 import { isTauri } from "@tauri-apps/api/core";
 import type { Workspace } from "./model";
 import { initialWorkspace } from "./model";
@@ -14,7 +15,7 @@ export async function loadWorkspace(): Promise<Workspace> {
       ? normalizeWorkspace(JSON.parse(rows[0].value))
       : initialWorkspace();
   }
-  const value = localStorage.getItem("focusdesk.workspace.v1");
+  const value = await readBrowserWorkspace();
   return value ? normalizeWorkspace(JSON.parse(value)) : initialWorkspace();
 }
 let queue = Promise.resolve();
@@ -30,7 +31,7 @@ export function saveWorkspace(workspace: Workspace) {
           "INSERT INTO workspace (id, value) VALUES (1, $1) ON CONFLICT(id) DO UPDATE SET value = excluded.value",
           [value],
         );
-      else localStorage.setItem("focusdesk.workspace.v1", value);
+      else await writeBrowserWorkspace(value);
     });
   return queue;
 }

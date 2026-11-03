@@ -1,8 +1,10 @@
+import { notesMarkdown, type TaskNotes } from "./notes";
 export type Quadrant = 0 | 1 | 2 | 3;
 export interface Task {
   id: string;
   title: string;
   description: string;
+  notes?: TaskNotes;
   quadrant: Quadrant;
   x: number;
   y: number;
@@ -183,6 +185,12 @@ export function tasksToMarkdown(tasks: Task[], title = "任务笔记") {
       );
       if (task.description)
         text.push(...task.description.split("\n").map((line) => `  ${line}`));
+      if (task.notes)
+        text.push(
+          ...notesMarkdown(task.notes)
+            .split("\n")
+            .map((line) => `  ${line}`),
+        );
       if (task.due) text.push(`  - 日期：${task.due}`);
       if (task.project) text.push(`  - 项目：${task.project}`);
       if (task.folder) text.push(`  - 文件夹：${task.folder}`);
