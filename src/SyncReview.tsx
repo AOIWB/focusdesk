@@ -48,8 +48,10 @@ export default function SyncReview({
         <h2>{plan.first ? "首次同步" : "处理同步冲突"}</h2>
         <p>
           本地：{count(plan.local, "task")} 个任务、{count(plan.local, "event")}{" "}
-          项日程 · 云端：{count(plan.remote, "task")} 个任务、
-          {count(plan.remote, "event")} 项日程
+          项日程、{count(plan.local, "idea")} 条灵感 · 云端：
+          {count(plan.remote, "task")} 个任务、
+          {count(plan.remote, "event")} 项日程、{count(plan.remote, "idea")}{" "}
+          条灵感
         </p>
         {conflicts.length ? (
           <>

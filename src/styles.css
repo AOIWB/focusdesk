@@ -1932,30 +1932,30 @@ kbd {
   padding: 13px 14px;
   text-align: left;
   border-radius: 8px;
-  color: #849474;
+  color: #84909b;
 }
 .global-result:hover,
 .global-result.focused {
-  background: #f2f5ee;
+  background: #f4f5f6;
 }
 .global-result > div {
   min-width: 0;
 }
 .global-result strong {
   font-weight: 500;
-  color: #3f5134;
+  color: #343b43;
   font-size: 13px;
   display: block;
 }
 .global-result p {
   margin: 7px 0;
-  color: #7b8871;
+  color: #707881;
   font-size: 11px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .global-result span {
-  color: #9aa58f;
+  color: #9299a2;
   font-size: 10px;
 }
 .search-task-dot {
@@ -2182,4 +2182,57 @@ kbd {
 }
 .open-task-notes:hover {
   color: #3469c7;
+}
+
+.global-search-input input,
+.global-search-input input:focus,
+.global-search-input input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.quick-capture {
+  width: 520px;
+}
+.capture-tabs {
+  display: flex;
+  gap: 24px;
+  margin: 4px 0 20px;
+  border-bottom: 1px solid #eceef0;
+}
+.capture-tabs button {
+  padding: 12px 0;
+  color: #858b92;
+  border-bottom: 2px solid transparent;
+}
+.capture-tabs button[aria-pressed="true"] {
+  color: #30363d;
+  border-bottom-color: #606a76;
+}
+.capture-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.capture-fields .field-label {
+  min-width: 0;
+}
+
+.capture-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-height: 850px) {
+  .sidebar .nav-caption {
+    padding-top: 10px;
+  }
+  .sidebar .brand {
+    padding-bottom: 14px;
+  }
+  .sidebar .nav-item {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
 }

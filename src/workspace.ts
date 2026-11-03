@@ -1,4 +1,4 @@
-import { notesText } from "./notes";
+import { notesText, notesLinks } from "./notes";
 import {
   type Workspace,
   type CalendarEvent,
@@ -22,6 +22,7 @@ export function normalizeWorkspace(data: Workspace): Workspace {
   const workspace = {
     ...data,
     projects: data.projects ?? [],
+    ideas: data.ideas ?? [],
     projectFolders: data.projectFolders ?? {},
     archivedProjects: data.archivedProjects ?? [],
     trash: data.trash ?? [],
@@ -209,6 +210,7 @@ export function taskSearchText(task: Task) {
     task.title,
     task.description,
     notesText(task.notes),
+    notesLinks(task.notes),
     task.project,
     task.folder,
     ...(task.folders ?? []),
@@ -227,8 +229,16 @@ export function matchesSearch(text: string, query: string) {
     .every((word) => normalized.includes(word));
 }
 export function searchWorkspace(workspace: Workspace, query: string) {
-  if (!query.trim()) return { tasks: [], projects: [], events: [] };
+  if (!query.trim()) return { tasks: [], projects: [], events: [], ideas: [] };
   return {
+    ideas: workspace.ideas.filter((i) =>
+      matchesSearch(
+        [i.title, notesText(i.notes), notesLinks(i.notes), i.createdAt].join(
+          "\n",
+        ),
+        query,
+      ),
+    ),
     events: workspace.events.filter((e) =>
       matchesSearch(eventSearchText(workspace, e), query),
     ),
@@ -263,6 +273,12 @@ export function mergeWorkspace(
   return normalizeWorkspace({
     ...workspace,
     tasks,
+    ideas: [
+      ...workspace.ideas,
+      ...data.ideas.filter(
+        (i) => !workspace.ideas.some((old) => old.id === i.id),
+      ),
+    ],
     events: [
       ...workspace.events,
       ...data.events.filter(

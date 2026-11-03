@@ -16,6 +16,7 @@ import {
   Type,
   Highlighter,
   Download,
+  Trash2,
 } from "lucide-react";
 import type { NoteDocument } from "./model";
 import { emptyNotes, notesMarkdown } from "./notes";
@@ -25,6 +26,9 @@ import {
   expandSelectionAncestors,
 } from "./notesEditor";
 import "./TaskNotes.css";
+import MindMap from "./MindMap";
+import { isTauri } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const colors = [
   "#292d32",
@@ -50,12 +54,15 @@ export default function TaskNotes({
   onUpdate,
   onClose,
   onError,
+  onDelete,
 }: {
   task: NoteDocument;
   onUpdate: (id: string, change: Partial<NoteDocument>) => void;
   onClose: () => void;
   onError: (message: string) => void;
+  onDelete?: () => void;
 }) {
+  const [view, setView] = useState<"notes" | "map">("notes");
   const fileInput = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const updateRef = useRef(onUpdate);
@@ -69,7 +76,7 @@ export default function TaskNotes({
       attributes: {
         class: "task-notes-content",
         role: "textbox",
-        "aria-label": "任务大纲笔记",
+        "aria-label": onDelete ? "灵感内容" : "任务大纲笔记",
         "aria-multiline": "true",
       },
       handlePaste: (_view, event) => {
@@ -133,8 +140,33 @@ export default function TaskNotes({
         className="task-notes-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="任务笔记"
-        onClick={(event) => event.stopPropagation()}
+        aria-label={onDelete ? "灵感记录" : "任务笔记"}
+        onClick={(event) => {
+          event.stopPropagation();
+          const anchor = (event.target as Element).closest(
+            "a[href]",
+          ) as HTMLAnchorElement | null;
+          if (anchor) event.preventDefault();
+          if (anchor && (event.metaKey || event.ctrlKey)) {
+            if (isTauri())
+              void openUrl(anchor.href).catch((e) => onError(String(e)));
+            else window.open(anchor.href, "_blank", "noopener,noreferrer");
+          }
+        }}
+        onKeyDownCapture={(event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            const href = editor.getAttributes("link").href as
+              string | undefined;
+            if (href) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (isTauri())
+                void openUrl(href).catch((e) => onError(String(e)));
+              else window.open(href, "_blank", "noopener,noreferrer");
+              return;
+            }
+          }
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.stopPropagation();
@@ -164,7 +196,33 @@ export default function TaskNotes({
       >
         <header className="task-notes-header">
           <span>{task.project || "未分类"}</span>
+          <div className="notes-view-switch" role="group" aria-label="笔记视图">
+            <button
+              aria-pressed={view === "notes"}
+              onClick={() => setView("notes")}
+            >
+              笔记
+            </button>
+            <button
+              aria-pressed={view === "map"}
+              onClick={() => {
+                setPalette(null);
+                setView("map");
+              }}
+            >
+              思维导图
+            </button>
+          </div>
           <div>
+            {onDelete && (
+              <button
+                className="icon-button"
+                title="删除灵感"
+                onClick={onDelete}
+              >
+                <Trash2 size={17} />
+              </button>
+            )}
             <button
               className="icon-button"
               title="导出笔记"
@@ -177,193 +235,226 @@ export default function TaskNotes({
             </button>
           </div>
         </header>
-        <div
-          className="task-notes-toolbar"
-          role="toolbar"
-          aria-label="笔记格式"
-        >
-          <div className="notes-tool-group">
-            <button
-              title="加粗"
-              aria-label="加粗"
-              aria-pressed={state.bold}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleBold().run()}
-            >
-              <Bold size={17} />
-            </button>
-            <button
-              title="斜体"
-              aria-label="斜体"
-              aria-pressed={state.italic}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-            >
-              <Italic size={17} />
-            </button>
-            <button
-              title="下划线"
-              aria-label="下划线"
-              aria-pressed={state.underline}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-            >
-              <Underline size={17} />
-            </button>
-            <button
-              title="删除线"
-              aria-label="删除线"
-              aria-pressed={state.strike}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleStrike().run()}
-            >
-              <Strikethrough size={17} />
-            </button>
-          </div>
-          <div className="notes-tool-group notes-colors">
-            <button
-              title="文字颜色"
-              aria-label="文字颜色"
-              aria-expanded={palette === "text"}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setPalette(palette === "text" ? null : "text")}
-            >
-              <Type size={17} style={{ color: state.color }} />
-              <ChevronDown size={10} />
-            </button>
-            <button
-              title="文字背景色"
-              aria-label="文字背景色"
-              aria-expanded={palette === "background"}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                setPalette(palette === "background" ? null : "background")
-              }
-            >
-              <Highlighter size={17} />
-              <span
-                className="notes-color-preview"
-                style={{ background: state.highlight }}
-              />
-              <ChevronDown size={10} />
-            </button>
-            {palette && (
-              <div
-                className="notes-palette"
-                role="group"
-                aria-label={
-                  palette === "text" ? "选择文字颜色" : "选择文字背景色"
+        {view === "notes" && (
+          <div
+            className="task-notes-toolbar"
+            role="toolbar"
+            aria-label="笔记格式"
+          >
+            <div className="notes-tool-group">
+              <button
+                title="加粗"
+                aria-label="加粗"
+                aria-pressed={state.bold}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleBold().run()}
+              >
+                <Bold size={17} />
+              </button>
+              <button
+                title="斜体"
+                aria-label="斜体"
+                aria-pressed={state.italic}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+              >
+                <Italic size={17} />
+              </button>
+              <button
+                title="下划线"
+                aria-label="下划线"
+                aria-pressed={state.underline}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleUnderline().run()}
+              >
+                <Underline size={17} />
+              </button>
+              <button
+                title="删除线"
+                aria-label="删除线"
+                aria-pressed={state.strike}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleStrike().run()}
+              >
+                <Strikethrough size={17} />
+              </button>
+            </div>
+            <div className="notes-tool-group notes-colors">
+              <button
+                title="文字颜色"
+                aria-label="文字颜色"
+                aria-expanded={palette === "text"}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setPalette(palette === "text" ? null : "text")}
+              >
+                <Type size={17} style={{ color: state.color }} />
+                <ChevronDown size={10} />
+              </button>
+              <button
+                title="文字背景色"
+                aria-label="文字背景色"
+                aria-expanded={palette === "background"}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  setPalette(palette === "background" ? null : "background")
                 }
               >
-                {(palette === "text" ? colors : highlights).map((color) => (
+                <Highlighter size={17} />
+                <span
+                  className="notes-color-preview"
+                  style={{ background: state.highlight }}
+                />
+                <ChevronDown size={10} />
+              </button>
+              {palette && (
+                <div
+                  className="notes-palette"
+                  role="group"
+                  aria-label={
+                    palette === "text" ? "选择文字颜色" : "选择文字背景色"
+                  }
+                >
+                  {(palette === "text" ? colors : highlights).map((color) => (
+                    <button
+                      key={color}
+                      title={color}
+                      aria-label={`颜色 ${color}`}
+                      className="notes-swatch"
+                      style={{ backgroundColor: color }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (palette === "text")
+                          editor.chain().focus().setColor(color).run();
+                        else
+                          editor.chain().focus().setHighlight({ color }).run();
+                        setPalette(null);
+                      }}
+                    />
+                  ))}
                   <button
-                    key={color}
-                    title={color}
-                    aria-label={`颜色 ${color}`}
-                    className="notes-swatch"
-                    style={{ backgroundColor: color }}
+                    className="notes-reset-color"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       if (palette === "text")
-                        editor.chain().focus().setColor(color).run();
-                      else editor.chain().focus().setHighlight({ color }).run();
+                        editor.chain().focus().unsetColor().run();
+                      else editor.chain().focus().unsetHighlight().run();
                       setPalette(null);
                     }}
-                  />
-                ))}
-                <button
-                  className="notes-reset-color"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (palette === "text")
-                      editor.chain().focus().unsetColor().run();
-                    else editor.chain().focus().unsetHighlight().run();
-                    setPalette(null);
-                  }}
-                >
-                  恢复默认
-                </button>
-              </div>
-            )}
+                  >
+                    恢复默认
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="notes-tool-group">
+              <button
+                title="项目列表"
+                aria-label="项目列表"
+                aria-pressed={state.list}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+              >
+                <List size={17} />
+              </button>
+              <button
+                title="减少缩进（Shift+Tab）"
+                aria-label="减少缩进"
+                disabled={!state.lift}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  editor.chain().focus().liftListItem("listItem").run()
+                }
+              >
+                <IndentDecrease size={17} />
+              </button>
+              <button
+                title="增加缩进（Tab）"
+                aria-label="增加缩进"
+                disabled={!state.sink}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  editor.chain().focus().sinkListItem("listItem").run()
+                }
+              >
+                <IndentIncrease size={17} />
+              </button>
+            </div>
+            <div className="notes-tool-group">
+              <button
+                title="插入图片"
+                aria-label="插入图片"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => fileInput.current?.click()}
+              >
+                <ImagePlus size={18} />
+              </button>
+            </div>
+            <div className="notes-tool-group">
+              <button
+                title="撤销"
+                aria-label="撤销"
+                disabled={!state.undo}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().undo().run()}
+              >
+                <Undo2 size={17} />
+              </button>
+              <button
+                title="重做"
+                aria-label="重做"
+                disabled={!state.redo}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().redo().run()}
+              >
+                <Redo2 size={17} />
+              </button>
+            </div>
           </div>
-          <div className="notes-tool-group">
-            <button
-              title="项目列表"
-              aria-label="项目列表"
-              aria-pressed={state.list}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
-            >
-              <List size={17} />
-            </button>
-            <button
-              title="减少缩进（Shift+Tab）"
-              aria-label="减少缩进"
-              disabled={!state.lift}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                editor.chain().focus().liftListItem("listItem").run()
-              }
-            >
-              <IndentDecrease size={17} />
-            </button>
-            <button
-              title="增加缩进（Tab）"
-              aria-label="增加缩进"
-              disabled={!state.sink}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                editor.chain().focus().sinkListItem("listItem").run()
-              }
-            >
-              <IndentIncrease size={17} />
-            </button>
+        )}
+        {view === "map" ? (
+          <MindMap
+            title={task.title}
+            notes={editor.getJSON()}
+            onEdit={(pos) => {
+              setView("notes");
+              requestAnimationFrame(() => {
+                editor
+                  .chain()
+                  .focus()
+                  .setTextSelection(
+                    Math.min(pos + 2, editor.state.doc.content.size),
+                  )
+                  .run();
+                expandSelectionAncestors(editor);
+              });
+            }}
+            onFold={(pos) => {
+              const node = editor.state.doc.nodeAt(pos);
+              if (node?.type.name === "listItem")
+                editor.view.dispatch(
+                  editor.state.tr.setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    collapsed: !node.attrs.collapsed,
+                  }),
+                );
+            }}
+          />
+        ) : (
+          <div className="task-notes-scroll" onClick={() => setPalette(null)}>
+            <div className="task-notes-page">
+              <input
+                className="task-notes-title"
+                aria-label="笔记标题"
+                placeholder="新任务"
+                value={task.title}
+                onChange={(event) =>
+                  onUpdate(task.id, { title: event.target.value })
+                }
+              />
+              <EditorContent editor={editor} />
+            </div>
           </div>
-          <div className="notes-tool-group">
-            <button
-              title="插入图片"
-              aria-label="插入图片"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => fileInput.current?.click()}
-            >
-              <ImagePlus size={18} />
-            </button>
-          </div>
-          <div className="notes-tool-group">
-            <button
-              title="撤销"
-              aria-label="撤销"
-              disabled={!state.undo}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().undo().run()}
-            >
-              <Undo2 size={17} />
-            </button>
-            <button
-              title="重做"
-              aria-label="重做"
-              disabled={!state.redo}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => editor.chain().focus().redo().run()}
-            >
-              <Redo2 size={17} />
-            </button>
-          </div>
-        </div>
-        <div className="task-notes-scroll" onClick={() => setPalette(null)}>
-          <div className="task-notes-page">
-            <input
-              className="task-notes-title"
-              aria-label="笔记标题"
-              placeholder="新任务"
-              value={task.title}
-              onChange={(event) =>
-                onUpdate(task.id, { title: event.target.value })
-              }
-            />
-            <EditorContent editor={editor} />
-          </div>
-        </div>
+        )}
         <input
           ref={fileInput}
           type="file"

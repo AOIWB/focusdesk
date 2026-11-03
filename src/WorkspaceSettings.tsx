@@ -26,6 +26,7 @@ export default function WorkspaceSettings({
   onSync,
   syncStatus,
   onRoot,
+  onTaskFolders,
 }: {
   workspace: Workspace;
   device: DeviceSettings;
@@ -36,6 +37,7 @@ export default function WorkspaceSettings({
   onSync: () => void;
   syncStatus: string;
   onRoot: (root: string) => Promise<void>;
+  onTaskFolders: () => Promise<void>;
 }) {
   const [tab, setTab] = useState("folders"),
     [draft, setDraft] = useState(device),
@@ -157,6 +159,18 @@ export default function WorkspaceSettings({
                   选择其他位置
                 </button>
               </div>
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await onTaskFolders();
+                    setMessage("任务文件夹已补齐");
+                  })
+                }
+              >
+                为已有任务补建文件夹
+              </button>
               <p>更换工作目录只影响新建文件夹，现有文件保持原位。</p>
             </>
           )}
@@ -313,7 +327,8 @@ export default function WorkspaceSettings({
                   <span>
                     {new Date(b.date).toLocaleString()} · {b.label}
                     <small>
-                      {b.tasks} 个任务 · {b.events} 项日程
+                      {b.tasks} 个任务 · {b.events} 项日程 · {b.ideas ?? 0}{" "}
+                      条灵感
                     </small>
                   </span>
                   <button onClick={() => setRestoreId(b.id)}>恢复</button>
@@ -347,11 +362,13 @@ export default function WorkspaceSettings({
                     <span>
                       {item.title}
                       <small>
-                        {item.kind === "task"
-                          ? "任务"
-                          : item.kind === "event"
-                            ? "日程"
-                            : "项目"}{" "}
+                        {item.kind === "idea"
+                          ? "灵感"
+                          : item.kind === "task"
+                            ? "任务"
+                            : item.kind === "event"
+                              ? "日程"
+                              : "项目"}{" "}
                         · {new Date(item.deletedAt).toLocaleString()}
                       </small>
                     </span>

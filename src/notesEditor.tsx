@@ -103,7 +103,12 @@ export function notesExtensions() {
     StarterKit.configure({
       listItem: false,
       trailingNode: false,
-      link: false,
+      link: {
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: "https",
+        HTMLAttributes: { title: "⌘ / Ctrl + 单击打开链接" },
+      },
       heading: false,
       codeBlock: false,
       horizontalRule: false,

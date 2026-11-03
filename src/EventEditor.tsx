@@ -113,79 +113,14 @@ export default function EventEditor({
             />
           </label>
         </div>
-        <label className="field-label event-half">
-          关联任务
-          <select
-            value={draft.taskId || ""}
-            onChange={(e) => {
-              if (!e.target.value && task)
-                change({
-                  taskId: undefined,
-                  notes: task.notes,
-                  project: task.project,
-                  folder: task.folder,
-                  folders: task.folders,
-                });
-              else change({ taskId: e.target.value || undefined });
-            }}
-          >
-            <option value="">独立日程</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title || "新任务"}
-                {t.done ? "（已完成）" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label event-half">
-          所属项目
-          <select
-            disabled={Boolean(task)}
-            value={task?.project ?? draft.project}
-            onChange={(e) => change({ project: e.target.value })}
-          >
-            <option value="">未分类</option>
-            {projects.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="field-label">
-          日程说明
+          备注（可选）
           <textarea
             rows={2}
             value={draft.description}
             onChange={(e) => change({ description: e.target.value })}
           />
         </label>
-        <div className="event-resources">
-          <button type="button" onClick={() => commit(true)}>
-            <NotebookPen size={16} />
-            {task ? "打开任务笔记" : "打开日程笔记"}
-          </button>
-        </div>
-        {task ? (
-          <FolderLinks
-            readOnly
-            paths={[]}
-            inherited={[
-              ...folderPaths(task),
-              ...(projectFolders[task.project] ?? []),
-            ]}
-            onChange={() => {}}
-            onError={onError}
-          />
-        ) : (
-          <FolderLinks
-            paths={folderPaths(draft)}
-            inherited={projectFolders[draft.project] ?? []}
-            onChange={(folders) => change({ folder: "", folders })}
-            onError={onError}
-          />
-        )}
         <div className="event-time-fields">
           <label className="field-label">
             重复
@@ -260,6 +195,89 @@ export default function EventEditor({
               <option value="future">本次及后续日程</option>
             </select>
           </label>
+        )}
+        <details className="event-more" open={task ? true : undefined}>
+          <summary>关联任务与项目</summary>
+          <label className="field-label event-half">
+            关联任务
+            <select
+              value={draft.taskId || ""}
+              onChange={(e) => {
+                if (!e.target.value && task)
+                  change({
+                    taskId: undefined,
+                    notes: task.notes,
+                    project: task.project,
+                    folder: task.folder,
+                    folders: task.folders,
+                  });
+                else change({ taskId: e.target.value || undefined });
+              }}
+            >
+              <option value="">独立日程</option>
+              {tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title || "新任务"}
+                  {t.done ? "（已完成）" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label event-half">
+            所属项目
+            <select
+              disabled={Boolean(task)}
+              value={task?.project ?? draft.project}
+              onChange={(e) => change({ project: e.target.value })}
+            >
+              <option value="">未分类</option>
+              {projects.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          {task && (
+            <button
+              type="button"
+              className="task-schedule-button"
+              onClick={() => commit(true)}
+            >
+              <NotebookPen size={16} />
+              打开任务笔记
+            </button>
+          )}
+        </details>
+        {(draft.notes || folderPaths(draft).length > 0) && (
+          <details className="event-more">
+            <summary>已有笔记与附件</summary>
+            <div className="event-resources">
+              <button type="button" onClick={() => commit(true)}>
+                <NotebookPen size={16} />
+                {task ? "打开任务笔记" : "打开日程笔记"}
+              </button>
+            </div>
+            {task ? (
+              <FolderLinks
+                readOnly
+                paths={[]}
+                inherited={[
+                  ...folderPaths(task),
+                  ...(projectFolders[task.project] ?? []),
+                ]}
+                onChange={() => {}}
+                onError={onError}
+              />
+            ) : (
+              <FolderLinks
+                paths={folderPaths(draft)}
+                inherited={projectFolders[draft.project] ?? []}
+                onChange={(folders) => change({ folder: "", folders })}
+                onError={onError}
+              />
+            )}
+          </details>
         )}
         {error && (
           <p className="event-error" role="alert">

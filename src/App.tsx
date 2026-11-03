@@ -38,7 +38,9 @@ import { isTauri } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   clamp,
+  outlineGroups,
   makeEvent,
+  makeIdea,
   type CalendarEvent,
   makeTask,
   nodeDiameter,
@@ -54,6 +56,8 @@ import { completion } from "./ai";
 import Outline from "./Outline";
 import Calendar from "./CalendarView";
 import EventEditor from "./EventEditor";
+import QuickCapture from "./QuickCapture";
+import IdeasView from "./IdeasView";
 import {
   dateKey,
   defaultSchedule,
@@ -90,6 +94,7 @@ import {
   loadDevice,
   saveDevice,
   createProjectDirectory,
+  createTaskDirectory,
   createWorkspaceDirectory,
   type DeviceSettings,
 } from "./device";
@@ -122,6 +127,10 @@ export default function App() {
   } = useWorkspace();
   const [device, setDevice] = useState<DeviceSettings>(defaultDevice);
   const [workSettings, setWorkSettings] = useState(false);
+  const [capture, setCapture] = useState<{
+    quadrant?: Quadrant;
+    idea?: boolean;
+  } | null>(null);
   const [syncStatus, setSyncStatus] = useState("尚未同步");
   const [syncPlan, setSyncPlan] = useState<SyncPlan | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -132,12 +141,19 @@ export default function App() {
   const [captureResult, setCaptureResult] = useState<{
     tasks: string[];
     events: string[];
+    completed?: string[];
     label: string;
   } | null>(null);
   const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
   const notesTask =
     workspace.tasks.find((task) => task.id === notesTaskId) ??
-    workspace.events.find((event) => event.id === notesTaskId);
+    workspace.events.find((event) => event.id === notesTaskId) ??
+    (workspace.ideas.find((i) => i.id === notesTaskId)
+      ? {
+          ...workspace.ideas.find((i) => i.id === notesTaskId)!,
+          project: "灵感",
+        }
+      : undefined);
   const [eventDraft, setEventDraft] = useState<CalendarEvent | null>(null);
   const [calendarDay, setCalendarDay] = useState(dateKey(new Date()));
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
@@ -146,9 +162,9 @@ export default function App() {
   const [loadError, setLoadError] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [view, setView] = useState<"board" | "outline" | "done" | "calendar">(
-    "board",
-  );
+  const [view, setView] = useState<
+    "board" | "outline" | "done" | "calendar" | "ideas"
+  >("board");
   const [project, setProject] = useState<string | null>("");
   const projectLabel = project === null ? "未分类" : project;
   const taskProject = project ?? "";
@@ -228,6 +244,7 @@ export default function App() {
         setConnectSource(null);
         setEventDraft(null);
         setWorkSettings(false);
+        setCapture(null);
       }
       if (
         (event.metaKey || event.ctrlKey) &&
@@ -235,7 +252,7 @@ export default function App() {
         event.key.toLowerCase() === "a"
       ) {
         event.preventDefault();
-        inputRef.current?.focus();
+        setCapture({});
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
@@ -282,9 +299,9 @@ export default function App() {
   });
   useEffect(() => {
     if (ready)
-      void configureShortcut(device.quickCapture, () =>
-        inputRef.current?.focus(),
-      ).catch((e) => notify(String(e)));
+      void configureShortcut(device.quickCapture, () => setCapture({})).catch(
+        (e) => notify(String(e)),
+      );
   }, [ready, device.quickCapture]);
   useEffect(() => {
     if (!ready || !device.notifications) return;
@@ -344,9 +361,7 @@ export default function App() {
     )
       throw new Error("系统未允许通知，请在系统设置中开启");
     if (value.quickCapture !== device.quickCapture)
-      await configureShortcut(value.quickCapture, () =>
-        inputRef.current?.focus(),
-      );
+      await configureShortcut(value.quickCapture, () => setCapture({}));
     await saveDevice(value);
     setDevice(value);
     setSyncPlan(null);
@@ -367,10 +382,59 @@ export default function App() {
       }
     return { ...value, projectFolders: folders };
   }
+  const folderQueue = useRef<Promise<void>>(Promise.resolve());
+  function provisionTasks(ids?: string[], root = device.root): Promise<void> {
+    if (!isTauri()) return Promise.resolve();
+    const job = folderQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const savedDevice = await loadDevice();
+        const directory =
+          root || savedDevice.root || (await createWorkspaceDirectory());
+        if (!savedDevice.root) {
+          await saveDevice({ ...savedDevice, root: directory });
+          setDevice((d) => ({ ...d, root: directory }));
+        }
+        for (const task of workspaceRef.current.tasks) {
+          if (
+            (ids && !ids.includes(task.id)) ||
+            task.taskFolder ||
+            !task.title.trim()
+          )
+            continue;
+          const path = await createTaskDirectory(
+            directory,
+            task.project || "未分类",
+            outlineGroups.find((g) => g.quadrant === task.quadrant)!.title,
+            task.title,
+            task.id,
+          );
+          setWorkspace((w) => ({
+            ...w,
+            tasks: w.tasks.map((t) =>
+              t.id === task.id
+                ? {
+                    ...t,
+                    taskFolder: path,
+                    folders: [...new Set([...(t.folders ?? []), path])],
+                  }
+                : t,
+            ),
+          }));
+        }
+      });
+    folderQueue.current = job;
+    return job;
+  }
+  const titleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   async function setRoot(root: string) {
     const next = await ensureProjectFolders(workspaceRef.current, root);
     await updateDevice({ ...device, root });
-    setWorkspace(next);
+    setWorkspace((w) => ({
+      ...w,
+      projectFolders: { ...next.projectFolders, ...w.projectFolders },
+    }));
+    await provisionTasks(undefined, root);
   }
   async function finishSync(
     plan: SyncPlan,
@@ -439,6 +503,7 @@ export default function App() {
           ...workspaceRef.current.projectFolders,
         },
       });
+      await provisionTasks();
       await saveWorkspace(workspaceRef.current);
       await writeLocal(`sync-base:${plan.target}`, JSON.stringify(uploaded));
       const syncedAt = new Date().toISOString();
@@ -511,8 +576,25 @@ export default function App() {
     }
   }
   syncTrigger.current = () => void startSync();
-  const updateTask = (id: string, change: Partial<Task>) =>
+  const updateTask = (id: string, change: Partial<Task>) => {
     setWorkspace((w) => changeTask(w, id, change));
+    if (
+      change.title?.trim() &&
+      !workspaceRef.current.tasks.find((t) => t.id === id)?.taskFolder
+    ) {
+      clearTimeout(titleTimers.current.get(id));
+      titleTimers.current.set(
+        id,
+        setTimeout(
+          () =>
+            void provisionTasks([id]).catch((e) =>
+              notify(`任务已保存，目录创建失败：${String(e)}`),
+            ),
+          1200,
+        ),
+      );
+    }
+  };
   const visible = workspace.tasks.filter(
     (t) =>
       t.done === (view === "done") &&
@@ -557,7 +639,9 @@ export default function App() {
     view === "calendar"
       ? workspace.events.filter(
           (e) => eventDetails(workspace, e).project === name,
-        ).length
+        ).length +
+        workspace.tasks.filter((t) => !t.done && t.project === name && t.due)
+          .length
       : workspace.tasks.filter((t) => !t.done && t.project === name).length;
   const pending = workspace.tasks.filter((t) => !t.done).length;
   const completed = workspace.tasks.filter((t) => t.done).length;
@@ -580,9 +664,12 @@ export default function App() {
       }
       return { ...w, tasks };
     });
-    if (view === "done") setView("board");
+    if (view === "done" || view === "ideas") setView("board");
     setQuery("");
     setProject("");
+    void provisionTasks(created).catch((e) =>
+      notify(`任务已保存，目录创建失败：${String(e)}`),
+    );
     return created;
   }
   async function submit() {
@@ -607,6 +694,16 @@ export default function App() {
             project: item.value.project || taskProject,
           }),
         );
+      const completedIds = items
+        .filter((item) => item.kind === "complete")
+        .map((item) => item.value.id);
+      if (completedIds.length)
+        setWorkspace((w) => ({
+          ...w,
+          tasks: w.tasks.map((t) =>
+            completedIds.includes(t.id) ? { ...t, done: true } : t,
+          ),
+        }));
       const createdIds = tasks.length ? addTasks(tasks) : [];
       if (events.length) {
         setWorkspace((w) => ({ ...w, events: [...w.events, ...events] }));
@@ -618,29 +715,38 @@ export default function App() {
         setSelected(null);
       } else if (view === "calendar") setView("board");
       try {
-        const beforeFolders = workspaceRef.current;
-        const withFolders = await ensureProjectFolders(beforeFolders);
-        setWorkspace((w) => ({
-          ...w,
-          projectFolders: {
-            ...withFolders.projectFolders,
-            ...w.projectFolders,
-          },
-        }));
+        if (tasks.length) {
+          const beforeFolders = workspaceRef.current;
+          const withFolders = await ensureProjectFolders(beforeFolders);
+          setWorkspace((w) => ({
+            ...w,
+            projectFolders: {
+              ...withFolders.projectFolders,
+              ...w.projectFolders,
+            },
+          }));
+        }
       } catch (e) {
         notify(`记录已创建，但项目目录未建立：${String(e)}`);
       }
       setCaptureResult({
         tasks: createdIds,
         events: events.map((e) => e.id),
+        completed: completedIds,
         label: events.length
           ? `${events[0].title} · ${scheduleLabel(events[0])}${events[0].recurrence ? " · 重复日程" : ""}`
-          : tasks.map((t) => t.title).join("、"),
+          : [
+              ...tasks.map((t) => t.title),
+              ...items
+                .filter((i) => i.kind === "complete")
+                .map((i) => `已完成：${i.value.title}`),
+            ].join("、"),
       });
       setInput("");
       notify(
         [
           tasks.length ? `已添加 ${tasks.length} 个任务` : "",
+          completedIds.length ? `已完成 ${completedIds.length} 个任务` : "",
           events.length
             ? `已添加 ${events.length} 项日程 · ${scheduleLabel(events[0])}${events[0].taskId ? " · 已关联任务" : ""}`
             : "",
@@ -773,7 +879,8 @@ export default function App() {
   }
   function exportData() {
     const data = {
-      version: 4,
+      version: 5,
+      ideas: workspace.ideas,
       projectFolders: workspace.projectFolders,
       archivedProjects: workspace.archivedProjects,
       trash: workspace.trash,
@@ -889,8 +996,7 @@ export default function App() {
           <button
             className="new-task"
             onClick={() => {
-              if (view === "done") setView("board");
-              inputRef.current?.focus();
+              setCapture({});
             }}
           >
             <Plus size={18} /> 快速记录
@@ -937,6 +1043,18 @@ export default function App() {
           >
             <CalendarDays size={18} /> 日历
           </button>
+          <button
+            className={`nav-item ${view === "ideas" ? "chosen" : ""}`}
+            onClick={() => {
+              setView("ideas");
+              setProject("");
+              setQuery("");
+              setSelected(null);
+            }}
+          >
+            <Sparkles size={18} />
+            灵感
+          </button>
           <div className="nav-caption projects-heading">
             我的项目
             <button
@@ -952,7 +1070,7 @@ export default function App() {
               className={`nav-item project-item ${project === null && view !== "done" ? "chosen" : ""}`}
               onClick={() => {
                 setProject(null);
-                if (view === "done") setView("board");
+                if (view === "done" || view === "ideas") setView("board");
                 setSelected(null);
                 setQuery("");
               }}
@@ -968,7 +1086,7 @@ export default function App() {
                 className={`nav-item project-item ${project === name && view !== "done" ? "chosen" : ""}`}
                 onClick={() => {
                   setProject(name);
-                  if (view === "done") setView("board");
+                  if (view === "done" || view === "ideas") setView("board");
                   setSelected(null);
                   setQuery("");
                 }}
@@ -1026,14 +1144,16 @@ export default function App() {
             <span>工作空间</span>
             <ChevronRight size={13} />
             <strong>
-              {view === "done"
-                ? "已完成"
-                : projectLabel ||
-                  (view === "calendar"
-                    ? "日历"
-                    : view === "outline"
-                      ? "笔记"
-                      : "四象限")}
+              {view === "ideas"
+                ? "灵感"
+                : view === "done"
+                  ? "已完成"
+                  : projectLabel ||
+                    (view === "calendar"
+                      ? "日历"
+                      : view === "outline"
+                        ? "笔记"
+                        : "四象限")}
             </strong>
           </div>
           <div className="top-actions">
@@ -1090,17 +1210,19 @@ export default function App() {
         </header>
         <section className="workspace-heading">
           <h1>
-            {view === "done"
-              ? "已完成"
-              : projectLabel ||
-                (view === "calendar"
-                  ? "日历"
-                  : view === "outline"
-                    ? "笔记"
-                    : "四象限")}
+            {view === "ideas"
+              ? "灵感"
+              : view === "done"
+                ? "已完成"
+                : projectLabel ||
+                  (view === "calendar"
+                    ? "日历"
+                    : view === "outline"
+                      ? "笔记"
+                      : "四象限")}
           </h1>
           <div className="heading-actions">
-            {view !== "done" && view !== "calendar" && (
+            {view !== "done" && view !== "calendar" && view !== "ideas" && (
               <div className="view-switch" role="group" aria-label="切换视图">
                 <button
                   className={view === "outline" ? "active" : ""}
@@ -1131,13 +1253,32 @@ export default function App() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={view === "calendar" ? "搜索日程" : "搜索任务"}
-                aria-label={view === "calendar" ? "搜索日程" : "搜索任务"}
+                placeholder={
+                  view === "ideas"
+                    ? "搜索灵感"
+                    : view === "calendar"
+                      ? "搜索日程与截止任务"
+                      : "搜索任务"
+                }
+                aria-label={
+                  view === "ideas"
+                    ? "搜索灵感"
+                    : view === "calendar"
+                      ? "搜索日程与截止任务"
+                      : "搜索任务"
+                }
               />
             </label>
           </div>
         </section>
-        {view === "calendar" ? (
+        {view === "ideas" ? (
+          <IdeasView
+            ideas={workspace.ideas}
+            query={query}
+            onCreate={() => setCapture({ idea: true })}
+            onOpen={(idea) => setNotesTaskId(idea.id)}
+          />
+        ) : view === "calendar" ? (
           <Calendar
             events={workspace.events.filter(
               (event) =>
@@ -1149,6 +1290,12 @@ export default function App() {
                   )) &&
                 matchesSearch(eventSearchText(workspace, event), query),
             )}
+            deadlines={visible.filter((t) => Boolean(t.due))}
+            onTask={(task) => {
+              setView("board");
+              setProject(task.project || null);
+              setSelected(task.id);
+            }}
             day={calendarDay}
             mode={calendarMode}
             onDay={setCalendarDay}
@@ -1204,13 +1351,7 @@ export default function App() {
                       className="quadrant-add icon-button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const t = makeTask({
-                          title: "新任务",
-                          quadrant: i as Quadrant,
-                          project: taskProject,
-                        });
-                        setWorkspace((w) => ({ ...w, tasks: [...w.tasks, t] }));
-                        setSelected(t.id);
+                        setCapture({ quadrant: i as Quadrant });
                       }}
                     >
                       <Plus size={16} />
@@ -1573,111 +1714,146 @@ export default function App() {
             )}
           </section>
         )}
-        <footer className="composer-area">
-          {captureResult && (
-            <div className="capture-result">
-              <span>{captureResult.label}</span>
-              <button
-                onClick={() => {
-                  const task = workspace.tasks.find(
-                      (t) => t.id === captureResult.tasks[0],
-                    ),
-                    event = workspace.events.find(
-                      (e) => e.id === captureResult.events[0],
-                    );
-                  if (event) setEventDraft(event);
-                  else if (task) {
-                    setView("board");
-                    setSelected(task.id);
-                  }
-                }}
-              >
-                修改
-              </button>
-              <button
-                onClick={() => {
-                  setWorkspace((w) => {
-                    let next = w;
-                    for (const id of captureResult.tasks)
-                      next = trashItem(next, "task", id);
-                    for (const id of captureResult.events)
-                      next = trashItem(next, "event", id);
-                    return next;
-                  });
-                  setCaptureResult(null);
-                }}
-              >
-                撤销
-              </button>
-              <button
-                className="icon-button"
-                aria-label="关闭记录结果"
-                onClick={() => setCaptureResult(null)}
-              >
-                <X size={13} />
-              </button>
-            </div>
-          )}
-          <div className={`composer ${busy ? "is-busy" : ""}`}>
-            <textarea
-              ref={inputRef}
-              aria-label="输入任务或日程"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing
-                ) {
-                  e.preventDefault();
-                  void submit();
-                }
-              }}
-              placeholder="记下任务，或说：明天上午十点到十二点上课…"
-              rows={1}
-            />
-            <div className="composer-bottom">
-              <button className="model-chip" onClick={() => setSettings(true)}>
-                <Sparkles size={14} />
-                {workspace.config.model || "本地快速记录"}
-                <ChevronRight size={12} />
-              </button>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <select
-                  className="intake-mode"
-                  aria-label="记录类型"
-                  value={intakeMode}
-                  onChange={(e) => setIntakeMode(e.target.value as IntakeMode)}
-                >
-                  <option value="auto">自动识别</option>
-                  <option value="task">任务</option>
-                  <option value="event">日程</option>
-                </select>
+        {view !== "ideas" && (
+          <footer className="composer-area">
+            {captureResult && (
+              <div className="capture-result">
+                <span>{captureResult.label}</span>
                 <button
-                  className="send-button"
-                  aria-label="添加记录"
-                  disabled={busy || !input.trim()}
-                  onClick={() => void submit()}
+                  onClick={() => {
+                    const task = workspace.tasks.find(
+                        (t) => t.id === captureResult.tasks[0],
+                      ),
+                      event = workspace.events.find(
+                        (e) => e.id === captureResult.events[0],
+                      );
+                    if (event) setEventDraft(event);
+                    else if (task) {
+                      setView("board");
+                      setSelected(task.id);
+                    }
+                  }}
                 >
-                  {busy ? (
-                    <LoaderCircle size={19} className="spin" />
-                  ) : (
-                    <ArrowUp size={20} />
-                  )}
+                  修改
+                </button>
+                <button
+                  onClick={() => {
+                    setWorkspace((w) => {
+                      let next = {
+                        ...w,
+                        tasks: w.tasks.map((t) =>
+                          captureResult.completed?.includes(t.id)
+                            ? { ...t, done: false }
+                            : t,
+                        ),
+                      };
+                      for (const id of captureResult.tasks)
+                        next = trashItem(next, "task", id);
+                      for (const id of captureResult.events)
+                        next = trashItem(next, "event", id);
+                      return next;
+                    });
+                    setCaptureResult(null);
+                  }}
+                >
+                  撤销
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="关闭记录结果"
+                  onClick={() => setCaptureResult(null)}
+                >
+                  <X size={13} />
                 </button>
               </div>
+            )}
+            <div className={`composer ${busy ? "is-busy" : ""}`}>
+              <textarea
+                ref={inputRef}
+                aria-label="输入任务或日程"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    void submit();
+                  }
+                }}
+                placeholder="记下任务，或说：明天上午十点到十二点上课…"
+                rows={1}
+              />
+              <div className="composer-bottom">
+                <button
+                  className="model-chip"
+                  onClick={() => setSettings(true)}
+                >
+                  <Sparkles size={14} />
+                  {workspace.config.model || "本地快速记录"}
+                  <ChevronRight size={12} />
+                </button>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <select
+                    className="intake-mode"
+                    aria-label="记录类型"
+                    value={intakeMode}
+                    onChange={(e) =>
+                      setIntakeMode(e.target.value as IntakeMode)
+                    }
+                  >
+                    <option value="auto">自动识别</option>
+                    <option value="task">任务</option>
+                    <option value="event">日程</option>
+                  </select>
+                  <button
+                    className="send-button"
+                    aria-label="添加记录"
+                    disabled={busy || !input.trim()}
+                    onClick={() => void submit()}
+                  >
+                    {busy ? (
+                      <LoaderCircle size={19} className="spin" />
+                    ) : (
+                      <ArrowUp size={20} />
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </footer>
+          </footer>
+        )}
       </main>
       {notesTask && (
         <Suspense fallback={null}>
           <TaskNotes
             key={notesTask.id}
             task={notesTask}
+            onDelete={
+              workspace.ideas.some((i) => i.id === notesTaskId)
+                ? () => {
+                    setWorkspace((w) => trashItem(w, "idea", notesTaskId!));
+                    setNotesTaskId(null);
+                  }
+                : undefined
+            }
             onUpdate={(id, change) => {
-              if (workspace.tasks.some((t) => t.id === id))
+              if (workspace.ideas.some((i) => i.id === id))
+                setWorkspace((w) => ({
+                  ...w,
+                  ideas: w.ideas.map((i) =>
+                    i.id === id
+                      ? {
+                          ...i,
+                          title: change.title ?? i.title,
+                          notes: change.notes ?? i.notes,
+                        }
+                      : i,
+                  ),
+                }));
+              else if (workspace.tasks.some((t) => t.id === id))
                 updateTask(id, change);
               else
                 setWorkspace((w) => ({
@@ -1691,6 +1867,34 @@ export default function App() {
             onError={notify}
           />
         </Suspense>
+      )}
+      {capture && (
+        <QuickCapture
+          quadrant={capture.quadrant}
+          idea={capture.idea}
+          onIdea={(title) => {
+            const idea = makeIdea(title);
+            setWorkspace((w) => ({ ...w, ideas: [...w.ideas, idea] }));
+            setCapture(null);
+            setView("ideas");
+            setProject("");
+            setQuery("");
+            setNotesTaskId(idea.id);
+          }}
+          project={taskProject}
+          projects={activeProjects}
+          onClose={() => setCapture(null)}
+          onEvent={() => {
+            setCapture(null);
+            newEvent(defaultSchedule());
+          }}
+          onTask={(value) => {
+            const ids = addTasks([value]);
+            setCapture(null);
+            setView("board");
+            setSelected(ids[0]);
+          }}
+        />
       )}
       {eventDraft && (
         <EventEditor
@@ -1723,6 +1927,13 @@ export default function App() {
       {globalSearch && (
         <GlobalSearch
           workspace={workspace}
+          onIdea={(idea) => {
+            setGlobalSearch(false);
+            setView("ideas");
+            setProject("");
+            setQuery("");
+            setNotesTaskId(idea.id);
+          }}
           onClose={() => setGlobalSearch(false)}
           onEvent={(event) => {
             setGlobalSearch(false);
@@ -1809,6 +2020,7 @@ export default function App() {
           onSync={() => void startSync()}
           syncStatus={syncStatus}
           onRoot={setRoot}
+          onTaskFolders={() => provisionTasks()}
         />
       )}
       {syncPlan && (

@@ -31,7 +31,14 @@ export function trashItem(
   const entry: TrashEntry = {
     id: crypto.randomUUID(),
     kind,
-    title: kind === "project" ? id : task?.title || event?.title || "未命名",
+    ideas: kind === "idea" ? w.ideas.filter((i) => i.id === id) : [],
+    title:
+      kind === "project"
+        ? id
+        : task?.title ||
+          event?.title ||
+          w.ideas.find((i) => i.id === id)?.title ||
+          "未命名",
     deletedAt: new Date().toISOString(),
     tasks,
     events,
@@ -55,6 +62,7 @@ export function trashItem(
   for (const t of tasks) next = removeTask(next, t.id);
   next = {
     ...next,
+    ideas: kind === "idea" ? next.ideas.filter((i) => i.id !== id) : next.ideas,
     events: next.events.filter(
       (e) => !events.some((removed) => removed.id === e.id),
     ),
@@ -96,6 +104,12 @@ export function restoreTrash(w: Workspace, id: string): Workspace {
     tasks,
     events,
     links,
+    ideas: [
+      ...w.ideas,
+      ...(item.ideas ?? []).filter(
+        (i) => !w.ideas.some((old) => old.id === i.id),
+      ),
+    ],
     projects: item.project
       ? [...new Set([...w.projects, item.project])]
       : w.projects,
@@ -111,6 +125,7 @@ export interface Backup {
   label: string;
   tasks: number;
   events: number;
+  ideas?: number;
 }
 export const listBackups = async (): Promise<Backup[]> =>
   JSON.parse((await readLocal("backups")) || "[]");
@@ -129,6 +144,7 @@ export function createBackup(w: Workspace, label = "手动备份") {
         label,
         tasks: w.tasks.length,
         events: w.events.length,
+        ideas: w.ideas.length,
       };
       await writeLocal(`backup:${item.id}`, JSON.stringify(backupWorkspace(w)));
       await writeLocal("backups", JSON.stringify([item, ...list].slice(0, 30)));

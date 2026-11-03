@@ -1,3 +1,4 @@
+import { taskTitle } from "./model";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   completionUrl,
@@ -60,7 +61,7 @@ export async function parseTasks(
     if (typeof t.title !== "string" || !t.title.trim())
       throw new Error("模型返回的任务缺少标题");
     return {
-      title: t.title,
+      title: taskTitle(t.title),
       description: String(t.description || ""),
       quadrant: clamp(Math.round(Number(t.quadrant) || 0), 0, 3) as Quadrant,
       size: clamp(Number(t.size) || 110, 72, 180),

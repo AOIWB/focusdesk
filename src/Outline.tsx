@@ -249,9 +249,9 @@ export default function Outline({
                               </select>
                             </label>
                             <label>
-                              日期
+                              截止日期
                               <input
-                                aria-label={`${task.title}的日期`}
+                                aria-label={`${task.title}的截止日期`}
                                 type="date"
                                 value={task.due}
                                 onChange={(e) =>

@@ -1,8 +1,16 @@
 import { notesText } from "./notes";
 import { useState } from "react";
-import { CheckCheck, CalendarDays, Folder, Search, X } from "lucide-react";
+import {
+  CheckCheck,
+  CalendarDays,
+  Folder,
+  Search,
+  X,
+  Sparkles,
+} from "lucide-react";
 import {
   type Workspace,
+  type Idea,
   type Task,
   type CalendarEvent,
   outlineGroups,
@@ -14,9 +22,11 @@ export default function GlobalSearch({
   onTask,
   onEvent,
   onProject,
+  onIdea,
 }: {
   workspace: Workspace;
   onClose: () => void;
+  onIdea: (idea: Idea) => void;
   onEvent: (event: CalendarEvent) => void;
   onTask: (task: Task) => void;
   onProject: (name: string) => void;
@@ -25,7 +35,10 @@ export default function GlobalSearch({
   const result = searchWorkspace(workspace, query);
   const [cursor, setCursor] = useState(0);
   const count =
-    result.projects.length + result.tasks.length + result.events.length;
+    result.projects.length +
+    result.tasks.length +
+    result.events.length +
+    result.ideas.length;
   function pick(index: number) {
     if (index < result.projects.length) onProject(result.projects[index]);
     else if (result.tasks[index - result.projects.length])
@@ -36,6 +49,16 @@ export default function GlobalSearch({
       onEvent(
         result.events[index - result.projects.length - result.tasks.length],
       );
+    else {
+      const idea =
+        result.ideas[
+          index -
+            result.projects.length -
+            result.tasks.length -
+            result.events.length
+        ];
+      if (idea) onIdea(idea);
+    }
   }
   function excerpt(task: Task) {
     const text = [
@@ -158,10 +181,26 @@ export default function GlobalSearch({
                   </div>
                 </button>
               ))}
+              {result.ideas.map((idea, i) => (
+                <button
+                  key={idea.id}
+                  className={`global-result ${cursor === result.projects.length + result.tasks.length + result.events.length + i ? "focused" : ""}`}
+                  onClick={() => onIdea(idea)}
+                >
+                  <Sparkles size={18} />
+                  <div>
+                    <strong>{idea.title}</strong>
+                    <p>{notesText(idea.notes).slice(0, 150)}</p>
+                    <span>
+                      灵感 · {new Date(idea.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </>
           ) : (
             <div className="search-placeholder">
-              搜索任务、日程、笔记、项目、日期、文件夹路径
+              搜索任务、日程、灵感、笔记、项目、日期、文件夹路径
             </div>
           )}
         </div>

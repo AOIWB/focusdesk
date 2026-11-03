@@ -13,6 +13,7 @@ export interface Task {
   project: string;
   folder: string;
   folders?: string[];
+  taskFolder?: string;
   done: boolean;
   createdAt: string;
 }
@@ -52,6 +53,21 @@ export function makeEvent(
     ...values,
   };
 }
+export interface Idea {
+  id: string;
+  title: string;
+  notes?: TaskNotes;
+  createdAt: string;
+  x?: number;
+  y?: number;
+}
+export function makeIdea(title: string): Idea {
+  return {
+    id: crypto.randomUUID(),
+    title,
+    createdAt: new Date().toISOString(),
+  };
+}
 export interface ModelConfig {
   url: string;
   key: string;
@@ -64,7 +80,8 @@ export interface TaskLink {
 }
 export interface TrashEntry {
   id: string;
-  kind: "task" | "event" | "project";
+  kind: "task" | "event" | "project" | "idea";
+  ideas?: Idea[];
   memberships?: { tasks: string[]; events: string[] };
   title: string;
   deletedAt: string;
@@ -75,6 +92,7 @@ export interface TrashEntry {
   folders?: string[];
 }
 export interface Workspace {
+  ideas: Idea[];
   projects: string[];
   projectFolders: Record<string, string[]>;
   archivedProjects: string[];
@@ -144,6 +162,7 @@ export const initialWorkspace = (): Workspace => ({
   links: [],
   manualQuadrants: [],
   events: [],
+  ideas: [],
   tasks: [
     makeTask({
       title: "完成本周提案",
@@ -183,6 +202,21 @@ export const initialWorkspace = (): Workspace => ({
     }),
   ],
 });
+export function taskTitle(input: string): string {
+  let title = input
+    .trim()
+    .replace(/^(?:请帮我|帮我|我想要|我想|我要|请|需要)\s*/, "");
+  const datePrefix =
+    /^(?:(?:今天|明天|明日|后天|今晚|本周|下周)(?:上午|下午|晚上)?(?:[零一二两三四五六七八九十\d]+(?:点|时)(?:半|\d+分)?)?(?:之前|前)?|20\d{2}[-/年]\d{1,2}[-/月]\d{1,2}日?(?:之前|前)?)\s*/;
+  title = title
+    .replace(datePrefix, "")
+    .replace(/^完成(?!情况|度|率|状态|时间|标准|条件|报告|品)\s*/, "")
+    .replace(datePrefix, "");
+  title = title
+    .replace(/[，,](?:很重要|不重要|不紧急|不着急|优先级低).*$/, "")
+    .trim();
+  return title || input.trim();
+}
 export function localParse(
   input: string,
   now = new Date(),
@@ -203,7 +237,7 @@ export function localParse(
     due = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
   return {
-    title: input.length > 28 ? input.slice(0, 28) + "…" : input,
+    title: taskTitle(input),
     description: input,
     quadrant: important ? (urgent ? 0 : 1) : urgent ? 2 : 3,
     due,

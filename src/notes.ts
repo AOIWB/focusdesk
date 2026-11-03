@@ -31,6 +31,7 @@ export function notesMarkdown(node?: TaskNotes, depth = 0): string {
       if (mark.type === "italic") text = `*${text}*`;
       if (mark.type === "strike") text = `~~${text}~~`;
       if (mark.type === "underline") text = `<u>${text}</u>`;
+      if (mark.type === "link") text = `[${text}](${mark.attrs?.href ?? ""})`;
     }
     return text;
   }
@@ -49,4 +50,16 @@ export function notesMarkdown(node?: TaskNotes, depth = 0): string {
   return (node.content ?? [])
     .map((child) => notesMarkdown(child, depth))
     .join(node.type === "paragraph" || node.type === "heading" ? "" : "\n");
+}
+
+export function notesLinks(node?: TaskNotes): string {
+  if (!node) return "";
+  return [
+    ...(node.marks ?? [])
+      .filter((m) => m.type === "link")
+      .map((m) => String(m.attrs?.href ?? "")),
+    ...(node.content ?? []).map(notesLinks),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

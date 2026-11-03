@@ -19,6 +19,7 @@ const fixture = () => {
       title: "方案",
       project: "工作",
       folder: "/mac/old",
+      taskFolder: "/mac/task-owned",
       folders: ["/mac/a", "/mac/b"],
     }),
   ];
@@ -104,6 +105,7 @@ describe("本地模式和同步合并", () => {
     cloud.records["task:task"].title = "同步修改";
     const restored = applyDocument(w, cloud);
     expect(restored.tasks[0].folders).toEqual(["/mac/a", "/mac/b"]);
+    expect(restored.tasks[0].taskFolder).toBe("/mac/task-owned");
     expect(restored.projectFolders).toEqual(w.projectFolders);
     expect(renameProject(w, "工作", "教学").projectFolders.教学).toEqual([
       "/mac/project",

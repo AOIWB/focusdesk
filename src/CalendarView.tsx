@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus, Link2 } from "lucide-react";
-import type { CalendarEvent } from "./model";
+import type { CalendarEvent, Task } from "./model";
 import {
   dateKey,
   dateFromKey,
@@ -20,6 +20,8 @@ const modes = { day: "日", week: "周", month: "月", year: "年" };
 const weekdays = ["一", "二", "三", "四", "五", "六", "日"];
 export default function Calendar({
   events: sourceEvents,
+  deadlines,
+  onTask,
   onReschedule,
   day,
   mode,
@@ -29,6 +31,8 @@ export default function Calendar({
   onOpen,
 }: {
   events: CalendarEvent[];
+  deadlines: Task[];
+  onTask: (task: Task) => void;
   onReschedule: (event: CalendarEvent) => void;
   day: string;
   mode: CalendarMode;
@@ -46,6 +50,17 @@ export default function Calendar({
       : mode === "month"
         ? [monthDays(day)[0], monthDays(day)[41]]
         : [days[0], days[days.length - 1]];
+  const dueOn = (date: string) => deadlines.filter((t) => t.due === date);
+  const deadlineButton = (task: Task) => (
+    <button
+      key={task.id}
+      className="calendar-deadline"
+      title={`截止 · ${task.title}`}
+      onClick={() => onTask(task)}
+    >
+      截止 · {task.title}
+    </button>
+  );
   const expanded = expandEvents(sourceEvents, range[0], range[1]);
   const [preview, setPreview] = useState<CalendarEvent | null>(null);
   const events = expanded;
@@ -214,6 +229,19 @@ export default function Calendar({
               </button>
             ))}
           </div>
+          {days.some((d) => dueOn(d).length > 0) && (
+            <div
+              className="calendar-deadlines"
+              style={{
+                gridTemplateColumns: `48px repeat(${days.length}, minmax(0,1fr))`,
+              }}
+            >
+              <span>截止</span>
+              {days.map((d) => (
+                <div key={d}>{dueOn(d).map(deadlineButton)}</div>
+              ))}
+            </div>
+          )}
           <div className="calendar-time-scroll" ref={scroll}>
             <div
               className="calendar-time-grid"
@@ -338,25 +366,30 @@ export default function Calendar({
                   >
                     {Number(d.slice(8))}
                   </button>
-                  {list.slice(0, 3).map((e) => (
-                    <button
-                      key={e.id}
-                      className="calendar-month-event"
-                      title={`${e.title} ${scheduleLabel(e)}`}
-                      onClick={() => onOpen(e)}
-                    >
-                      <time>
-                        {e.start.slice(0, 10) < d ? "跨日" : e.start.slice(11)}
-                      </time>
-                      {e.title}
-                    </button>
-                  ))}
-                  {list.length > 3 && (
+                  {dueOn(d).slice(0, 3).map(deadlineButton)}
+                  {list
+                    .slice(0, Math.max(0, 3 - Math.min(3, dueOn(d).length)))
+                    .map((e) => (
+                      <button
+                        key={e.id}
+                        className="calendar-month-event"
+                        title={`${e.title} ${scheduleLabel(e)}`}
+                        onClick={() => onOpen(e)}
+                      >
+                        <time>
+                          {e.start.slice(0, 10) < d
+                            ? "跨日"
+                            : e.start.slice(11)}
+                        </time>
+                        {e.title}
+                      </button>
+                    ))}
+                  {list.length + dueOn(d).length > 3 && (
                     <button
                       className="calendar-more"
                       onClick={() => openDay(d)}
                     >
-                      +{list.length - 3} 项
+                      +{list.length + dueOn(d).length - 3} 项
                     </button>
                   )}
                 </div>
@@ -388,12 +421,14 @@ export default function Calendar({
                       d.slice(0, 7) === month
                         ? events.filter((e) => scheduledOn(e, d)).length
                         : 0;
+                    const deadlinesCount =
+                      d.slice(0, 7) === month ? dueOn(d).length : 0;
                     return (
                       <button
                         key={d}
                         disabled={d.slice(0, 7) !== month}
-                        aria-label={`${d}，${count} 项日程`}
-                        className={`${d === today ? "is-today" : ""} ${count ? "has-events" : ""}`}
+                        aria-label={`${d}，${count} 项日程，${deadlinesCount} 项截止任务`}
+                        className={`${d === today ? "is-today" : ""} ${count ? "has-events" : ""} ${deadlinesCount ? "has-deadlines" : ""}`}
                         onClick={() => openDay(d)}
                       >
                         {d.slice(0, 7) === month ? Number(d.slice(8)) : ""}

@@ -53,3 +53,19 @@ export async function createWorkspaceDirectory(parent?: string) {
     parent: parent || null,
   });
 }
+
+export async function createTaskDirectory(
+  root: string,
+  project: string,
+  quadrant: string,
+  title: string,
+  id: string,
+) {
+  return invoke<string>("create_task_directory", {
+    root,
+    project,
+    quadrant,
+    title,
+    id,
+  });
+}

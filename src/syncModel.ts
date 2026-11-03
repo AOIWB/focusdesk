@@ -1,4 +1,4 @@
-import type { Workspace, Task, CalendarEvent, TrashEntry } from "./model";
+import type { Workspace, Task, CalendarEvent, TrashEntry, Idea } from "./model";
 import { normalizeWorkspace } from "./workspace";
 export type RecordValue = Record<string, unknown>;
 export interface SyncDocument {
@@ -19,14 +19,24 @@ export const emptyDocument = (): SyncDocument => ({
   deleted: {},
 });
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-function portable<T extends { folder?: string; folders?: string[] }>(item: T) {
-  const { folder: _folder, folders: _folders, ...value } = item;
+function portable<
+  T extends { folder?: string; folders?: string[]; taskFolder?: string },
+>(item: T) {
+  const {
+    folder: _folder,
+    folders: _folders,
+    taskFolder: _taskFolder,
+    ...value
+  } = item;
   return clean(value);
 }
 export function syncDocument(w: Workspace): SyncDocument {
   const records: SyncDocument["records"] = {};
   w.tasks.forEach((t) => {
     records[`task:${t.id}`] = portable(t);
+  });
+  w.ideas.forEach((i) => {
+    records[`idea:${i.id}`] = clean({ ...i });
   });
   w.events.forEach((e) => {
     records[`event:${e.id}`] = portable(e);
@@ -68,6 +78,7 @@ export function applyDocument(
       .map(([, v]) => v);
   const tasks = values("task:").map((v) => ({
     ...v,
+    taskFolder: current.tasks.find((t) => t.id === v.id)?.taskFolder,
     folder: current.tasks.find((t) => t.id === v.id)?.folder ?? "",
     folders: current.tasks.find((t) => t.id === v.id)?.folders ?? [],
   })) as unknown as Task[];
@@ -81,6 +92,7 @@ export function applyDocument(
     ...current,
     tasks,
     events,
+    ideas: values("idea:") as unknown as Idea[],
     projects: projects.map((p) => String(p.name)),
     archivedProjects: projects
       .filter((p) => p.archived)
@@ -96,6 +108,7 @@ export function applyDocument(
         folders: old?.folders,
         tasks: (v.tasks as Task[]).map((t) => ({
           ...t,
+          taskFolder: old?.tasks.find((a) => a.id === t.id)?.taskFolder,
           folder: old?.tasks.find((a) => a.id === t.id)?.folder ?? "",
           folders: old?.tasks.find((a) => a.id === t.id)?.folders ?? [],
         })),

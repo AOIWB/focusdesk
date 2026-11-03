@@ -31,6 +31,20 @@ fn create_project_directory(root: String, name: String) -> Result<String, String
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
 }
+fn directory_name(name: &str) -> String {
+    let name: String = name.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c }).take(80).collect();
+    let name = name.trim().trim_end_matches('.');
+    if name.is_empty() { "未命名".into() } else { name.into() }
+}
+#[tauri::command]
+fn create_task_directory(root: String, project: String, quadrant: String, title: String, id: String) -> Result<String, String> {
+    let parent = std::path::Path::new(&root).join(directory_name(&project)).join(directory_name(&quadrant));
+    let name = format!("{}-{}", directory_name(&title), directory_name(&id).chars().take(8).collect::<String>());
+    let path = parent.join(name);
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 async fn repository_request(provider: String, path: String, token: String, method: String, body: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
     let base = match provider.as_str() { "github" => "https://api.github.com", "gitee" => "https://gitee.com/api/v5", _ => return Err("不支持的平台".into()) };
@@ -58,7 +72,24 @@ pub fn run() {
             sql: "CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY, value TEXT NOT NULL);",
             kind: MigrationKind::Up,
         }, Migration { version: 2, description: "local_settings_and_backups", sql: "CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);", kind: MigrationKind::Up }]).build())
-        .invoke_handler(tauri::generate_handler![chat_completion, create_workspace_directory, create_project_directory, repository_request])
+        .invoke_handler(tauri::generate_handler![chat_completion, create_workspace_directory, create_project_directory, create_task_directory, repository_request])
         .run(tauri::generate_context!())
         .expect("could not start FocusDesk");
+}
+
+#[cfg(test)]
+mod directory_tests {
+    use super::*;
+    #[test]
+    fn creates_nested_task_folders_without_combining_same_title_tasks() {
+        let root = std::env::temp_dir().join(format!("pinecone-folder-test-{}",std::process::id()));
+        let first = create_task_directory(root.to_string_lossy().into(),"未分类".into(),"紧急重要".into(),"论文撰写".into(),"12345678-abcd".into()).unwrap();
+        let second = create_task_directory(root.to_string_lossy().into(),"未分类".into(),"紧急重要".into(),"论文撰写".into(),"87654321-abcd".into()).unwrap();
+        assert!(std::path::Path::new(&first).is_dir());
+        assert!(std::path::Path::new(&second).is_dir());
+        assert_ne!(first,second);
+        assert!(first.contains("未分类"));
+        assert!(first.contains("紧急重要"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

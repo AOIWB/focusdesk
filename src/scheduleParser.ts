@@ -39,7 +39,7 @@ export function parseDate(input: string, now = new Date()): string | undefined {
     return `${now.getFullYear()}-${month[1].padStart(2, "0")}-${month[2].padStart(2, "0")}`;
   if (/大后天/.test(input)) return addDays(today, 3);
   if (/后天/.test(input)) return addDays(today, 2);
-  if (/明天|明早|明晚/.test(input)) return addDays(today, 1);
+  if (/明天|明日|明早|明晚/.test(input)) return addDays(today, 1);
   if (/今天|今日|今晚|今早/.test(input)) return today;
   const weekday = input.match(
     /(下下|下|本|这)?(?:周|星期|礼拜)([一二三四五六日天])/,
@@ -159,7 +159,7 @@ export function parseSchedule(
   if (!validSchedule(schedule))
     throw new Error("结束时间需晚于开始时间，请再说明一下时间范围");
   const prefix = datePrefix.replace(
-    /(20\d{2})[-/年]\d{1,2}[-/月]\d{1,2}日?|\d{1,2}月\d{1,2}[日号]?|大后天|后天|明天|今天|今日|明早|明晚|今晚|今早|(下下|下|本|这)?(?:周|星期|礼拜)[一二三四五六日天]/g,
+    /(20\d{2})[-/年]\d{1,2}[-/月]\d{1,2}日?|\d{1,2}月\d{1,2}[日号]?|大后天|后天|明天|明日|今天|今日|明早|明晚|今晚|今早|(下下|下|本|这)?(?:周|星期|礼拜)[一二三四五六日天]/g,
     "",
   );
   const title = `${prefix} ${input.slice(consumed)}`
