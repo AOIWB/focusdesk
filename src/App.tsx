@@ -1705,13 +1705,6 @@ export default function App() {
           onSave={saveEvent}
           onDelete={(scope) => deleteEvent(eventDraft, scope)}
           onNotes={(event) => {
-            if (
-              event.recurrence &&
-              !event.taskId &&
-              !event.seriesId &&
-              !workspace.events.some((e) => e.id === event.id)
-            )
-              saveEvent(event, "future");
             setNotesTaskId(event.taskId || event.seriesId || event.id);
             setEventDraft(null);
           }}
