@@ -10,14 +10,14 @@ import {
 } from "react";
 import {
   ArrowUp,
+  Undo2,
+  Redo2,
   CalendarDays,
   NotebookPen,
   Check,
   CheckCheck,
   ChevronRight,
   Download,
-  ExternalLink,
-  Folder,
   FolderOpen,
   LayoutGrid,
   ListTree,
@@ -35,11 +35,9 @@ import {
   X,
 } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   clamp,
-  initialWorkspace,
   makeEvent,
   type CalendarEvent,
   makeTask,
@@ -51,7 +49,7 @@ import {
   type Task,
   type Workspace,
 } from "./model";
-import { loadWorkspace, saveWorkspace } from "./storage";
+import { loadWorkspace, saveWorkspace, writeLocal, readLocal } from "./storage";
 import { completion } from "./ai";
 import Outline from "./Outline";
 import Calendar from "./CalendarView";
@@ -74,7 +72,6 @@ import {
   eventSearchText,
   projectNames,
   renameProject,
-  deleteProject,
   changeTask,
   connectTasks,
   disconnectTasks,
@@ -82,13 +79,61 @@ import {
   matchesSearch,
   taskSearchText,
   mergeWorkspace,
-  removeTask,
 } from "./workspace";
+
+import useWorkspace from "./useWorkspace";
+import FolderLinks, { folderPaths } from "./FolderLinks";
+import WorkspaceSettings from "./WorkspaceSettings";
+import SyncReview from "./SyncReview";
+import {
+  defaultDevice,
+  loadDevice,
+  saveDevice,
+  createProjectDirectory,
+  createWorkspaceDirectory,
+  type DeviceSettings,
+} from "./device";
+import { autoBackup, createBackup, trashItem } from "./recovery";
+import { prepareSync, uploadSync, targetKey, type SyncPlan } from "./sync";
+import { syncDocument, mergeDocuments, applyDocument } from "./syncModel";
+import {
+  expandEvents,
+  updateOccurrence,
+  type OccurrenceScope,
+} from "./recurrence";
+import {
+  configureShortcut,
+  notificationPermission,
+  notifyEvent,
+} from "./desktop";
 
 const TaskNotes = lazy(() => import("./TaskNotes"));
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
+  const {
+    workspace,
+    current: workspaceRef,
+    setWorkspace,
+    replaceWorkspace,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useWorkspace();
+  const [device, setDevice] = useState<DeviceSettings>(defaultDevice);
+  const [workSettings, setWorkSettings] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("尚未同步");
+  const [syncPlan, setSyncPlan] = useState<SyncPlan | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const syncing = useRef(false);
+  const syncSettingsRef = useRef(device.sync);
+  syncSettingsRef.current = device.sync;
+  const syncTrigger = useRef<() => void>(() => {});
+  const [captureResult, setCaptureResult] = useState<{
+    tasks: string[];
+    events: string[];
+    label: string;
+  } | null>(null);
   const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
   const notesTask =
     workspace.tasks.find((task) => task.id === notesTaskId) ??
@@ -145,16 +190,19 @@ export default function App() {
     noticeTimer.current = setTimeout(() => setNotice(""), 6000);
   };
   useEffect(() => {
-    loadWorkspace()
-      .then((w) => {
-        setWorkspace(w);
+    Promise.all([loadWorkspace(), loadDevice()])
+      .then(([w, d]) => {
+        replaceWorkspace(w);
+        setDevice(d);
         setReady(true);
       })
       .catch((e) => setLoadError(String(e)));
   }, []);
   useEffect(() => {
     if (ready)
-      saveWorkspace(workspace).catch((e) => notify(`保存失败：${String(e)}`));
+      saveWorkspace(workspace)
+        .then(() => autoBackup(workspace))
+        .catch((e) => notify(`保存失败：${String(e)}`));
   }, [workspace, ready]);
   useEffect(() => {
     const node = boardRef.current;
@@ -179,6 +227,15 @@ export default function App() {
         setProjectEditor(null);
         setConnectSource(null);
         setEventDraft(null);
+        setWorkSettings(false);
+      }
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "a"
+      ) {
+        event.preventDefault();
+        inputRef.current?.focus();
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
@@ -210,16 +267,269 @@ export default function App() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [selected, view]);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest("input,textarea,[contenteditable=true]")) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+  useEffect(() => {
+    if (ready)
+      void configureShortcut(device.quickCapture, () =>
+        inputRef.current?.focus(),
+      ).catch((e) => notify(String(e)));
+  }, [ready, device.quickCapture]);
+  useEffect(() => {
+    if (!ready || !device.notifications) return;
+    let cancelled = false;
+    const notified = new Set<string>();
+    async function check() {
+      const day = dateKey(new Date()),
+        events = expandEvents(
+          workspaceRef.current.events,
+          day,
+          dateKey(new Date(Date.now() + 86400000)),
+        );
+      for (const event of events) {
+        if (event.reminder === undefined) continue;
+        const start = new Date(event.start).getTime(),
+          due = start - event.reminder * 60000,
+          key = `reminded:${event.id}:${event.start}:${event.reminder}`;
+        if (Date.now() < due || Date.now() > start + 60000 || notified.has(key))
+          continue;
+        notified.add(key);
+        if ((await readLocal(key)) || cancelled) continue;
+        await notifyEvent(event.title, scheduleLabel(event));
+        await writeLocal(key, "1");
+      }
+    }
+    void check().catch((e) => notify(String(e)));
+    const timer = setInterval(
+      () => void check().catch((e) => notify(String(e))),
+      15000,
+    );
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [ready, device.notifications]);
+  const portableText = JSON.stringify(syncDocument(workspace));
+  useEffect(() => {
+    if (!ready || !device.sync.enabled || !device.sync.auto || syncPlan) return;
+    const timer = setTimeout(() => syncTrigger.current(), 30000);
+    return () => clearTimeout(timer);
+  }, [ready, portableText, device.sync, syncPlan]);
+  useEffect(() => {
+    if (!ready || !device.sync.enabled || !device.sync.auto) return;
+    const timer = setInterval(() => syncTrigger.current(), 5 * 60 * 1000);
+    const focus = () => syncTrigger.current();
+    window.addEventListener("focus", focus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", focus);
+    };
+  }, [ready, device.sync.enabled, device.sync.auto]);
+  async function updateDevice(value: DeviceSettings) {
+    if (
+      value.notifications &&
+      !device.notifications &&
+      !(await notificationPermission())
+    )
+      throw new Error("系统未允许通知，请在系统设置中开启");
+    if (value.quickCapture !== device.quickCapture)
+      await configureShortcut(value.quickCapture, () =>
+        inputRef.current?.focus(),
+      );
+    await saveDevice(value);
+    setDevice(value);
+    setSyncPlan(null);
+  }
+  async function ensureProjectFolders(value: Workspace, root = device.root) {
+    if (!isTauri()) return value;
+    if (!root) {
+      root = await createWorkspaceDirectory();
+      const nextDevice = { ...device, root };
+      await saveDevice(nextDevice);
+      setDevice(nextDevice);
+    }
+    const folders = { ...value.projectFolders };
+    for (const name of projectNames(value))
+      if (!folders[name]?.length) {
+        const path = await createProjectDirectory(root, name);
+        folders[name] = [path];
+      }
+    return { ...value, projectFolders: folders };
+  }
+  async function setRoot(root: string) {
+    const next = await ensureProjectFolders(workspaceRef.current, root);
+    await updateDevice({ ...device, root });
+    setWorkspace(next);
+  }
+  async function finishSync(
+    plan: SyncPlan,
+    choices: Record<string, "local" | "remote">,
+  ) {
+    if (syncing.current) return;
+    syncing.current = true;
+    setSyncBusy(true);
+    setSyncStatus("同步中…");
+    const settings = { ...device.sync };
+    try {
+      if (!settings.enabled || plan.target !== targetKey(settings))
+        throw new Error("同步配置已变化，请重新同步");
+      const latest = syncDocument(workspaceRef.current);
+      if (JSON.stringify(latest) !== JSON.stringify(plan.local)) {
+        setSyncPlan({ ...plan, local: latest });
+        throw new Error("本地数据已变化，请重新确认合并结果");
+      }
+      await createBackup(workspaceRef.current, "同步前备份");
+      if (mergeDocuments(plan.base, plan.local, plan.remote).conflicts.length)
+        await createBackup(
+          applyDocument(workspaceRef.current, plan.remote),
+          "冲突时云端版本",
+        );
+      if (
+        !syncSettingsRef.current.enabled ||
+        targetKey(syncSettingsRef.current) !== plan.target
+      )
+        throw new Error("同步已关闭或配置已变化");
+      const uploaded = await uploadSync(settings, plan, choices);
+      const current = workspaceRef.current;
+      const concurrent = mergeDocuments(
+        plan.local,
+        syncDocument(current),
+        uploaded,
+      );
+      const next = applyDocument(current, concurrent.document);
+      if (concurrent.conflicts.length) {
+        const fresh = await prepareSync(
+          settings,
+          syncDocument(workspaceRef.current),
+        );
+        setSyncPlan({ ...fresh, base: plan.local, first: false });
+        setSyncStatus("同步期间有新修改，请确认冲突");
+        return;
+      }
+      const withFolders = await ensureProjectFolders(next);
+      const finalMerge = mergeDocuments(
+        syncDocument(current),
+        syncDocument(workspaceRef.current),
+        syncDocument(withFolders),
+      );
+      if (finalMerge.conflicts.length) {
+        const fresh = await prepareSync(
+          settings,
+          syncDocument(workspaceRef.current),
+        );
+        setSyncPlan({ ...fresh, base: plan.local, first: false });
+        setSyncStatus("同步期间有新修改，请确认冲突");
+        return;
+      }
+      setWorkspace({
+        ...applyDocument(workspaceRef.current, finalMerge.document),
+        projectFolders: {
+          ...withFolders.projectFolders,
+          ...workspaceRef.current.projectFolders,
+        },
+      });
+      await saveWorkspace(workspaceRef.current);
+      await writeLocal(`sync-base:${plan.target}`, JSON.stringify(uploaded));
+      const syncedAt = new Date().toISOString();
+      await writeLocal(`sync-date:${plan.target}`, syncedAt);
+      const history = JSON.parse((await readLocal("sync-history")) || "[]");
+      await writeLocal(
+        "sync-history",
+        JSON.stringify(
+          [{ date: syncedAt, target: plan.target }, ...history].slice(0, 30),
+        ),
+      );
+      setSyncPlan(null);
+      setSyncStatus(
+        concurrent.conflicts.length
+          ? "本地有新修改，待下次同步"
+          : `已同步 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      );
+    } catch (e) {
+      setSyncStatus(`同步失败：${String(e instanceof Error ? e.message : e)}`);
+      notify(String(e instanceof Error ? e.message : e));
+    } finally {
+      syncing.current = false;
+      setSyncBusy(false);
+    }
+  }
+  async function startSync() {
+    if (!device.sync.enabled || syncing.current || syncPlan) return;
+    syncing.current = true;
+    setSyncBusy(true);
+    setSyncStatus("正在读取云端…");
+    const settings = { ...device.sync };
+    try {
+      const plan = await prepareSync(
+        settings,
+        syncDocument(workspaceRef.current),
+      );
+      if (
+        !syncSettingsRef.current.enabled ||
+        targetKey(syncSettingsRef.current) !== plan.target
+      )
+        return;
+      plan.local = syncDocument(workspaceRef.current);
+      if (
+        !plan.first &&
+        JSON.stringify(plan.local) === JSON.stringify(plan.remote)
+      ) {
+        await writeLocal(
+          `sync-base:${plan.target}`,
+          JSON.stringify(plan.remote),
+        );
+        setSyncStatus(
+          `已同步 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+        );
+        return;
+      }
+      syncing.current = false;
+      setSyncBusy(false);
+      if (
+        plan.first ||
+        mergeDocuments(plan.base, plan.local, plan.remote).conflicts.length
+      ) {
+        setSyncPlan(plan);
+        setSyncStatus("等待确认合并");
+      } else await finishSync(plan, {});
+    } catch (e) {
+      setSyncStatus(`同步失败：${String(e instanceof Error ? e.message : e)}`);
+    } finally {
+      syncing.current = false;
+      setSyncBusy(false);
+    }
+  }
+  syncTrigger.current = () => void startSync();
   const updateTask = (id: string, change: Partial<Task>) =>
     setWorkspace((w) => changeTask(w, id, change));
   const visible = workspace.tasks.filter(
     (t) =>
       t.done === (view === "done") &&
+      (Boolean(project) || !workspace.archivedProjects.includes(t.project)) &&
       (project === "" || t.project === taskProject) &&
-      matchesSearch(taskSearchText(t), query),
+      matchesSearch(
+        taskSearchText(t) +
+          "\n" +
+          (workspace.projectFolders[t.project] ?? []).join("\n"),
+        query,
+      ),
   );
   const active = workspace.tasks.find((t) => t.id === selected);
   const projects = projectNames(workspace);
+  const activeProjects = projects.filter(
+    (p) => !workspace.archivedProjects.includes(p),
+  );
   const focusedNode = connectSource || hovered || selected;
   const relatedNodes = new Set(
     graphLinks(workspace).flatMap((link) =>
@@ -252,26 +562,28 @@ export default function App() {
   const pending = workspace.tasks.filter((t) => !t.done).length;
   const completed = workspace.tasks.filter((t) => t.done).length;
   function addTasks(values: (Partial<Task> & Pick<Task, "title">)[]) {
+    const created: string[] = [];
     setWorkspace((w) => {
       const tasks = [...w.tasks];
       for (const value of values) {
         const count = tasks.filter(
           (t) => !t.done && t.quadrant === (value.quadrant ?? 1),
         ).length;
-        tasks.push(
-          makeTask({
-            x: [0.3, 0.68, 0.48, 0.75, 0.23][count % 5],
-            y: [0.45, 0.62, 0.73, 0.35, 0.7][count % 5],
-            project: taskProject,
-            ...value,
-          }),
-        );
+        const nextTask = makeTask({
+          x: [0.3, 0.68, 0.48, 0.75, 0.23][count % 5],
+          y: [0.45, 0.62, 0.73, 0.35, 0.7][count % 5],
+          project: taskProject,
+          ...value,
+        });
+        tasks.push(nextTask);
+        created.push(nextTask.id);
       }
       return { ...w, tasks };
     });
     if (view === "done") setView("board");
     setQuery("");
     setProject("");
+    return created;
   }
   async function submit() {
     if (!input.trim() || busy) return;
@@ -295,7 +607,7 @@ export default function App() {
             project: item.value.project || taskProject,
           }),
         );
-      if (tasks.length) addTasks(tasks);
+      const createdIds = tasks.length ? addTasks(tasks) : [];
       if (events.length) {
         setWorkspace((w) => ({ ...w, events: [...w.events, ...events] }));
         setCalendarDay(events[0].start.slice(0, 10));
@@ -305,6 +617,26 @@ export default function App() {
         setQuery("");
         setSelected(null);
       } else if (view === "calendar") setView("board");
+      try {
+        const beforeFolders = workspaceRef.current;
+        const withFolders = await ensureProjectFolders(beforeFolders);
+        setWorkspace((w) => ({
+          ...w,
+          projectFolders: {
+            ...withFolders.projectFolders,
+            ...w.projectFolders,
+          },
+        }));
+      } catch (e) {
+        notify(`记录已创建，但项目目录未建立：${String(e)}`);
+      }
+      setCaptureResult({
+        tasks: createdIds,
+        events: events.map((e) => e.id),
+        label: events.length
+          ? `${events[0].title} · ${scheduleLabel(events[0])}${events[0].recurrence ? " · 重复日程" : ""}`
+          : tasks.map((t) => t.title).join("、"),
+      });
       setInput("");
       notify(
         [
@@ -336,14 +668,44 @@ export default function App() {
     );
     setSelected(null);
   }
-  function saveEvent(event: CalendarEvent) {
-    setWorkspace((w) => ({
-      ...w,
-      events: w.events.some((e) => e.id === event.id)
-        ? w.events.map((e) => (e.id === event.id ? event : e))
-        : [...w.events, event],
-    }));
+  function saveEvent(event: CalendarEvent, scope: OccurrenceScope = "this") {
+    const oldEvents = workspaceRef.current.events;
+    const next = updateOccurrence(oldEvents, event, scope);
+    const saved =
+      next.find((e) => !oldEvents.some((old) => old.id === e.id)) ??
+      next.find((e) => e.id === (event.seriesId || event.id));
+    setWorkspace((w) => ({ ...w, events: next }));
     setCalendarDay(event.start.slice(0, 10));
+    setEventDraft(null);
+    return saved?.id || event.id;
+  }
+  function deleteEvent(event: CalendarEvent, scope: OccurrenceScope) {
+    setWorkspace((w) => {
+      if (!event.recurrence) return trashItem(w, "event", event.id);
+      const root = w.events.find((e) => e.id === (event.seriesId || event.id));
+      if (!root) return w;
+      const removed = trashItem(w, "event", root.id);
+      const { seriesId: _s, occurrenceDate: _o, ...saved } = event;
+      const restorable = {
+        ...saved,
+        id: crypto.randomUUID(),
+        recurrence: scope === "this" ? undefined : saved.recurrence,
+        excludedDates:
+          scope === "this"
+            ? undefined
+            : saved.excludedDates?.filter(
+                (d) => d >= (event.occurrenceDate || event.start.slice(0, 10)),
+              ),
+      };
+      return {
+        ...removed,
+        trash: [
+          { ...removed.trash[0], events: [restorable] },
+          ...removed.trash.slice(1),
+        ],
+        events: updateOccurrence(w.events, event, scope, true),
+      };
+    });
     setEventDraft(null);
   }
   function startGesture(event: PointerEvent, task: Task) {
@@ -398,22 +760,6 @@ export default function App() {
         ),
     };
   }
-  async function pickFolder(task: Task) {
-    if (!isTauri()) {
-      notify("网页预览可填写目录路径；系统文件夹选择与打开请使用桌面版。");
-      return;
-    }
-    try {
-      const path = await open({
-        directory: true,
-        multiple: false,
-        title: "选择任务文件夹",
-      });
-      if (typeof path === "string") updateTask(task.id, { folder: path });
-    } catch (e) {
-      notify(String(e));
-    }
-  }
   async function launchFolder(path: string) {
     if (!isTauri()) {
       notify("打开本地文件夹需要运行 松果 Pinecone 桌面版。");
@@ -427,7 +773,11 @@ export default function App() {
   }
   function exportData() {
     const data = {
-      version: 3,
+      version: 4,
+      projectFolders: workspace.projectFolders,
+      archivedProjects: workspace.archivedProjects,
+      trash: workspace.trash,
+      deleted: workspace.deleted,
       events: workspace.events,
       tasks: workspace.tasks,
       projects,
@@ -612,7 +962,7 @@ export default function App() {
               <span>{projectCount("")}</span>
             </button>
           </div>
-          {projects.map((name, i) => (
+          {activeProjects.map((name, i) => (
             <div className="project-row" key={name}>
               <button
                 className={`nav-item project-item ${project === name && view !== "done" ? "chosen" : ""}`}
@@ -641,6 +991,11 @@ export default function App() {
             </div>
           ))}
           <div className="sidebar-bottom">
+            <button className="nav-item" onClick={() => setWorkSettings(true)}>
+              <FolderOpen size={18} />
+              工作台设置
+              <ChevronRight size={15} />
+            </button>
             <button className="nav-item" onClick={() => setSettings(true)}>
               <Settings2 size={18} /> 模型与设置 <ChevronRight size={15} />
             </button>
@@ -682,6 +1037,31 @@ export default function App() {
             </strong>
           </div>
           <div className="top-actions">
+            {device.sync.enabled && (
+              <button
+                className="sync-status"
+                disabled={syncBusy}
+                onClick={() => void startSync()}
+              >
+                {syncStatus}
+              </button>
+            )}
+            <button
+              className="icon-button"
+              title="撤销操作"
+              disabled={!canUndo}
+              onClick={undo}
+            >
+              <Undo2 size={17} />
+            </button>
+            <button
+              className="icon-button"
+              title="重做操作"
+              disabled={!canRedo}
+              onClick={redo}
+            >
+              <Redo2 size={17} />
+            </button>
             <button
               className="icon-button"
               title="导出备份"
@@ -763,6 +1143,10 @@ export default function App() {
               (event) =>
                 (project === "" ||
                   eventDetails(workspace, event).project === taskProject) &&
+                (Boolean(project) ||
+                  !workspace.archivedProjects.includes(
+                    eventDetails(workspace, event).project,
+                  )) &&
                 matchesSearch(eventSearchText(workspace, event), query),
             )}
             day={calendarDay}
@@ -771,6 +1155,9 @@ export default function App() {
             onMode={setCalendarMode}
             onCreate={newEvent}
             onOpen={setEventDraft}
+            onReschedule={(event) =>
+              event.recurrence ? setEventDraft(event) : saveEvent(event)
+            }
           />
         ) : view === "board" ? (
           <div className="board-shell">
@@ -1062,32 +1449,14 @@ export default function App() {
                     <Link2 size={14} />
                     在画布上连接
                   </button>
-                  <div className="folder-block">
-                    <div>
-                      <Folder size={15} />
-                      <span>关联文件夹</span>
-                      <button onClick={() => void pickFolder(active)}>
-                        {active.folder ? "更换" : "选择文件夹"}
-                      </button>
-                    </div>
-                    <input
-                      aria-label="文件夹路径"
-                      placeholder="文件夹路径"
-                      value={active.folder}
-                      onChange={(e) =>
-                        updateTask(active.id, { folder: e.target.value })
-                      }
-                    />
-                    {active.folder && (
-                      <button
-                        className="open-folder"
-                        onClick={() => void launchFolder(active.folder)}
-                      >
-                        <FolderOpen size={15} /> 打开本地文件夹{" "}
-                        <ExternalLink size={13} />
-                      </button>
-                    )}
-                  </div>
+                  <FolderLinks
+                    paths={folderPaths(active)}
+                    inherited={workspace.projectFolders[active.project] ?? []}
+                    onChange={(folders) =>
+                      updateTask(active.id, { folder: "", folders })
+                    }
+                    onError={notify}
+                  />
                   <div className="popover-footer">
                     <button
                       className="open-task-notes"
@@ -1099,7 +1468,7 @@ export default function App() {
                       className="delete-task icon-button"
                       title="删除任务"
                       onClick={() => {
-                        setWorkspace((w) => removeTask(w, active.id));
+                        setWorkspace((w) => trashItem(w, "task", active.id));
                         setSelected(null);
                       }}
                     >
@@ -1138,8 +1507,9 @@ export default function App() {
               setQuery("");
               return task.id;
             }}
-            onDelete={(id) => setWorkspace((w) => removeTask(w, id))}
-            onPickFolder={(task) => void pickFolder(task)}
+            onDelete={(id) => setWorkspace((w) => trashItem(w, "task", id))}
+            projectFolders={workspace.projectFolders}
+            onError={notify}
             onOpenFolder={(path) => void launchFolder(path)}
           />
         ) : (
@@ -1187,7 +1557,9 @@ export default function App() {
                   <button
                     className="icon-button"
                     title="删除任务"
-                    onClick={() => setWorkspace((w) => removeTask(w, task.id))}
+                    onClick={() =>
+                      setWorkspace((w) => trashItem(w, "task", task.id))
+                    }
                   >
                     <Trash2 size={16} />
                   </button>
@@ -1202,6 +1574,50 @@ export default function App() {
           </section>
         )}
         <footer className="composer-area">
+          {captureResult && (
+            <div className="capture-result">
+              <span>{captureResult.label}</span>
+              <button
+                onClick={() => {
+                  const task = workspace.tasks.find(
+                      (t) => t.id === captureResult.tasks[0],
+                    ),
+                    event = workspace.events.find(
+                      (e) => e.id === captureResult.events[0],
+                    );
+                  if (event) setEventDraft(event);
+                  else if (task) {
+                    setView("board");
+                    setSelected(task.id);
+                  }
+                }}
+              >
+                修改
+              </button>
+              <button
+                onClick={() => {
+                  setWorkspace((w) => {
+                    let next = w;
+                    for (const id of captureResult.tasks)
+                      next = trashItem(next, "task", id);
+                    for (const id of captureResult.events)
+                      next = trashItem(next, "event", id);
+                    return next;
+                  });
+                  setCaptureResult(null);
+                }}
+              >
+                撤销
+              </button>
+              <button
+                className="icon-button"
+                aria-label="关闭记录结果"
+                onClick={() => setCaptureResult(null)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
           <div className={`composer ${busy ? "is-busy" : ""}`}>
             <textarea
               ref={inputRef}
@@ -1282,18 +1698,24 @@ export default function App() {
           event={eventDraft}
           tasks={workspace.tasks}
           projects={projects}
-          existing={workspace.events.some((e) => e.id === eventDraft.id)}
+          existing={workspace.events.some(
+            (e) => e.id === (eventDraft.seriesId || eventDraft.id),
+          )}
           onClose={() => setEventDraft(null)}
           onSave={saveEvent}
-          onDelete={() => {
-            setWorkspace((w) => ({
-              ...w,
-              events: w.events.filter((e) => e.id !== eventDraft.id),
-            }));
+          onDelete={(scope) => deleteEvent(eventDraft, scope)}
+          onNotes={(event) => {
+            if (
+              event.recurrence &&
+              !event.taskId &&
+              !event.seriesId &&
+              !workspace.events.some((e) => e.id === event.id)
+            )
+              saveEvent(event, "future");
+            setNotesTaskId(event.taskId || event.seriesId || event.id);
             setEventDraft(null);
           }}
-          onNotes={(event) => setNotesTaskId(event.taskId || event.id)}
-          onFolder={(path) => void launchFolder(path)}
+          projectFolders={workspace.projectFolders}
           onError={notify}
         />
       )}
@@ -1320,7 +1742,11 @@ export default function App() {
           }}
           onTask={(task) => {
             setGlobalSearch(false);
-            setProject("");
+            setProject(
+              workspace.archivedProjects.includes(task.project)
+                ? task.project
+                : "",
+            );
             setQuery(task.done ? task.title : "");
             setView(task.done ? "done" : "board");
             setSelected(task.id);
@@ -1339,21 +1765,66 @@ export default function App() {
           original={projectEditor}
           names={projects}
           onClose={() => setProjectEditor(null)}
-          onSave={(name) => {
-            setWorkspace((w) =>
-              projectEditor
-                ? renameProject(w, projectEditor, name)
-                : { ...w, projects: [...projectNames(w), name] },
-            );
+          folders={workspace.projectFolders[projectEditor] ?? []}
+          onFolders={(folders) =>
+            setWorkspace((w) => ({
+              ...w,
+              projectFolders: { ...w.projectFolders, [projectEditor]: folders },
+            }))
+          }
+          onError={notify}
+          onArchive={() => {
+            setWorkspace((w) => ({
+              ...w,
+              archivedProjects: [
+                ...new Set([...w.archivedProjects, projectEditor]),
+              ],
+            }));
+            setProjectEditor(null);
+            setProject("");
+          }}
+          onSave={async (name) => {
+            let next = projectEditor
+              ? renameProject(workspaceRef.current, projectEditor, name)
+              : {
+                  ...workspaceRef.current,
+                  projects: [...projectNames(workspaceRef.current), name],
+                };
+            next = await ensureProjectFolders(next);
+            setWorkspace(next);
             if (project === projectEditor && projectEditor) setProject(name);
             setProjectEditor(null);
           }}
-          onDelete={() => {
-            setWorkspace((w) => deleteProject(w, projectEditor));
+          onDelete={(contents) => {
+            setWorkspace((w) =>
+              trashItem(w, "project", projectEditor, contents),
+            );
             if (project === projectEditor) setProject("");
             setProjectEditor(null);
-            notify("项目已删除，任务已移至未分类");
+            notify("项目已移入回收站，本地文件保持原位");
           }}
+        />
+      )}
+      {workSettings && (
+        <WorkspaceSettings
+          workspace={workspace}
+          device={device}
+          onDevice={updateDevice}
+          onWorkspace={setWorkspace}
+          onClose={() => setWorkSettings(false)}
+          onError={notify}
+          onSync={() => void startSync()}
+          syncStatus={syncStatus}
+          onRoot={setRoot}
+        />
+      )}
+      {syncPlan && (
+        <SyncReview
+          key={JSON.stringify(syncPlan.local)}
+          plan={syncPlan}
+          busy={syncBusy}
+          onClose={() => setSyncPlan(null)}
+          onConfirm={(choices) => void finishSync(syncPlan, choices)}
         />
       )}
       {settings && (

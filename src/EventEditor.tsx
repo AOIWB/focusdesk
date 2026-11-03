@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { X, NotebookPen, FolderOpen, Trash2 } from "lucide-react";
-import { isTauri } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { X, NotebookPen, Trash2 } from "lucide-react";
+import FolderLinks, { folderPaths } from "./FolderLinks";
+import type { OccurrenceScope } from "./recurrence";
 import type { CalendarEvent, Task } from "./model";
 import { validSchedule } from "./calendar";
 export default function EventEditor({
@@ -13,7 +13,7 @@ export default function EventEditor({
   onSave,
   onDelete,
   onNotes,
-  onFolder,
+  projectFolders,
   onError,
 }: {
   event: CalendarEvent;
@@ -21,13 +21,14 @@ export default function EventEditor({
   projects: string[];
   existing: boolean;
   onClose: () => void;
-  onSave: (event: CalendarEvent) => void;
-  onDelete: () => void;
+  onSave: (event: CalendarEvent, scope: OccurrenceScope) => string;
+  onDelete: (scope: OccurrenceScope) => void;
   onNotes: (event: CalendarEvent) => void;
-  onFolder: (path: string) => void;
+  projectFolders: Record<string, string[]>;
   onError: (message: string) => void;
 }) {
   const [draft, setDraft] = useState(event);
+  const [scope, setScope] = useState<OccurrenceScope>("this");
   const [error, setError] = useState("");
   const task = tasks.find((t) => t.id === draft.taskId);
   const change = (value: Partial<CalendarEvent>) =>
@@ -42,24 +43,24 @@ export default function EventEditor({
       return;
     }
     const value = { ...draft, title: draft.title.trim() };
-    onSave(value);
-    if (notes) onNotes(value);
-  }
-  async function pickFolder() {
-    if (!isTauri()) {
-      onError("文件夹选择请使用桌面版；网页中可填写路径");
+    if (
+      value.recurrence?.until &&
+      value.recurrence.until < value.start.slice(0, 10)
+    ) {
+      setError("重复结束日期不能早于开始日期");
       return;
     }
-    try {
-      const path = await open({
-        directory: true,
-        multiple: false,
-        title: "选择日程文件夹",
-      });
-      if (typeof path === "string") change({ folder: path });
-    } catch (e) {
-      onError(String(e));
+    if (
+      notes &&
+      existing &&
+      value.recurrence &&
+      JSON.stringify(draft) === JSON.stringify(event)
+    ) {
+      onNotes(value);
+      return;
     }
+    const id = onSave(value, scope);
+    if (notes) onNotes({ ...value, id, seriesId: undefined });
   }
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -112,7 +113,7 @@ export default function EventEditor({
             />
           </label>
         </div>
-        <label className="field-label">
+        <label className="field-label event-half">
           关联任务
           <select
             value={draft.taskId || ""}
@@ -123,6 +124,7 @@ export default function EventEditor({
                   notes: task.notes,
                   project: task.project,
                   folder: task.folder,
+                  folders: task.folders,
                 });
               else change({ taskId: e.target.value || undefined });
             }}
@@ -136,7 +138,7 @@ export default function EventEditor({
             ))}
           </select>
         </label>
-        <label className="field-label">
+        <label className="field-label event-half">
           所属项目
           <select
             disabled={Boolean(task)}
@@ -164,30 +166,100 @@ export default function EventEditor({
             <NotebookPen size={16} />
             {task ? "打开任务笔记" : "打开日程笔记"}
           </button>
-          {!task && (
-            <button type="button" onClick={() => void pickFolder()}>
-              <FolderOpen size={16} />
-              选择文件夹
-            </button>
-          )}
-          {(task?.folder || (!task && draft.folder)) && (
-            <button
-              type="button"
-              onClick={() => onFolder(task?.folder || draft.folder)}
-            >
-              <FolderOpen size={16} />
-              打开{task ? "任务" : "本地"}文件夹
-            </button>
-          )}
         </div>
-        {!task && (
-          <input
-            className="event-folder-path"
-            aria-label="日程文件夹路径"
-            placeholder="文件夹路径（可选）"
-            value={draft.folder}
-            onChange={(e) => change({ folder: e.target.value })}
+        {task ? (
+          <FolderLinks
+            readOnly
+            paths={[]}
+            inherited={[
+              ...folderPaths(task),
+              ...(projectFolders[task.project] ?? []),
+            ]}
+            onChange={() => {}}
+            onError={onError}
           />
+        ) : (
+          <FolderLinks
+            paths={folderPaths(draft)}
+            inherited={projectFolders[draft.project] ?? []}
+            onChange={(folders) => change({ folder: "", folders })}
+            onError={onError}
+          />
+        )}
+        <div className="event-time-fields">
+          <label className="field-label">
+            重复
+            <select
+              value={draft.recurrence?.frequency ?? ""}
+              onChange={(e) =>
+                change({
+                  recurrence: e.target.value
+                    ? {
+                        frequency: e.target.value as
+                          "daily" | "weekly" | "monthly" | "yearly",
+                        until: draft.recurrence?.until,
+                      }
+                    : undefined,
+                })
+              }
+            >
+              <option value="">不重复</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+              <option value="yearly">每年</option>
+            </select>
+          </label>
+          <label className="field-label">
+            提前提醒
+            <select
+              value={draft.reminder ?? -1}
+              onChange={(e) =>
+                change({
+                  reminder:
+                    Number(e.target.value) < 0
+                      ? undefined
+                      : Number(e.target.value),
+                })
+              }
+            >
+              <option value={-1}>不提醒</option>
+              <option value={0}>开始时</option>
+              <option value={5}>5 分钟</option>
+              <option value={15}>15 分钟</option>
+              <option value={30}>30 分钟</option>
+              <option value={60}>1 小时</option>
+            </select>
+          </label>
+        </div>
+        {draft.recurrence && (
+          <label className="field-label event-half">
+            重复结束日期（可选）
+            <input
+              type="date"
+              value={draft.recurrence.until ?? ""}
+              onChange={(e) =>
+                change({
+                  recurrence: {
+                    ...draft.recurrence!,
+                    until: e.target.value || undefined,
+                  },
+                })
+              }
+            />
+          </label>
+        )}
+        {event.recurrence && existing && (
+          <label className="field-label event-half">
+            修改范围
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as OccurrenceScope)}
+            >
+              <option value="this">仅本次</option>
+              <option value="future">本次及后续日程</option>
+            </select>
+          </label>
         )}
         {error && (
           <p className="event-error" role="alert">
@@ -196,7 +268,11 @@ export default function EventEditor({
         )}
         <div className="modal-actions">
           {existing && (
-            <button type="button" className="delete-task" onClick={onDelete}>
+            <button
+              type="button"
+              className="delete-task"
+              onClick={() => onDelete(scope)}
+            >
               <Trash2 size={16} />
               删除日程
             </button>

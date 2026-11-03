@@ -11,24 +11,31 @@ function db() {
   }));
 }
 
-export async function readBrowserWorkspace(): Promise<string | null> {
+export async function readBrowserWorkspace(
+  key = storageKey,
+): Promise<string | null> {
   const database = await db();
   const value = await new Promise<string | undefined>((resolve, reject) => {
     const request = database
       .transaction("workspace")
       .objectStore("workspace")
-      .get(storageKey);
+      .get(key);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
-  return value ?? localStorage.getItem(storageKey);
+  return (
+    value ?? (key === storageKey ? localStorage.getItem(storageKey) : null)
+  );
 }
 
-export async function writeBrowserWorkspace(value: string): Promise<void> {
+export async function writeBrowserWorkspace(
+  value: string,
+  key = storageKey,
+): Promise<void> {
   const database = await db();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction("workspace", "readwrite");
-    transaction.objectStore("workspace").put(value, storageKey);
+    transaction.objectStore("workspace").put(value, key);
     transaction.oncomplete = () => resolve();
     transaction.onabort = () => reject(transaction.error);
     transaction.onerror = () => reject(transaction.error);

@@ -1,3 +1,4 @@
+import FolderLinks, { folderPaths } from "./FolderLinks";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -7,7 +8,6 @@ import {
   ChevronRight,
   Download,
   Folder,
-  FolderOpen,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -25,7 +25,8 @@ interface Props {
   onUpdate: (id: string, changes: Partial<Task>) => void;
   onCreate: (quadrant: Quadrant) => string;
   onDelete: (id: string) => void;
-  onPickFolder: (task: Task) => void;
+  projectFolders: Record<string, string[]>;
+  onError: (message: string) => void;
   onOpenFolder: (path: string) => void;
   onSchedule: (task: Task) => void;
   onOpenNotes: (id: string) => void;
@@ -37,7 +38,8 @@ export default function Outline({
   onUpdate,
   onCreate,
   onDelete,
-  onPickFolder,
+  projectFolders,
+  onError,
   onOpenFolder,
   onOpenNotes,
   onSchedule,
@@ -275,24 +277,15 @@ export default function Outline({
                               </select>
                             </label>
                           </div>
+                          <FolderLinks
+                            paths={folderPaths(task)}
+                            inherited={projectFolders[task.project] ?? []}
+                            onChange={(folders) =>
+                              onUpdate(task.id, { folder: "", folders })
+                            }
+                            onError={onError}
+                          />
                           <div className="outline-folder">
-                            <button onClick={() => onPickFolder(task)}>
-                              <FolderOpen size={15} />
-                              {task.folder ? "更换文件夹" : "关联文件夹"}
-                            </button>
-                            <input
-                              aria-label={`${task.title}的文件夹路径`}
-                              placeholder="文件夹路径"
-                              value={task.folder}
-                              onChange={(e) =>
-                                onUpdate(task.id, { folder: e.target.value })
-                              }
-                            />
-                            {task.folder && (
-                              <button onClick={() => onOpenFolder(task.folder)}>
-                                打开
-                              </button>
-                            )}
                             <button
                               className="icon-button"
                               title={`删除${task.title}`}

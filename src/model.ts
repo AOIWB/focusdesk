@@ -12,8 +12,13 @@ export interface Task {
   due: string;
   project: string;
   folder: string;
+  folders?: string[];
   done: boolean;
   createdAt: string;
+}
+export interface Recurrence {
+  frequency: "daily" | "weekly" | "monthly" | "yearly";
+  until?: string;
 }
 export interface CalendarEvent {
   id: string;
@@ -24,7 +29,13 @@ export interface CalendarEvent {
   notes?: TaskNotes;
   project: string;
   folder: string;
+  folders?: string[];
   taskId?: string;
+  recurrence?: Recurrence;
+  excludedDates?: string[];
+  seriesId?: string;
+  occurrenceDate?: string;
+  reminder?: number;
   createdAt: string;
 }
 export type NoteDocument = Pick<Task, "id" | "title" | "notes" | "project">;
@@ -51,8 +62,24 @@ export interface TaskLink {
   source: string;
   target: string;
 }
+export interface TrashEntry {
+  id: string;
+  kind: "task" | "event" | "project";
+  memberships?: { tasks: string[]; events: string[] };
+  title: string;
+  deletedAt: string;
+  tasks: Task[];
+  events: CalendarEvent[];
+  links: TaskLink[];
+  project?: string;
+  folders?: string[];
+}
 export interface Workspace {
   projects: string[];
+  projectFolders: Record<string, string[]>;
+  archivedProjects: string[];
+  trash: TrashEntry[];
+  deleted: Record<string, string>;
   links: TaskLink[];
   manualQuadrants: Quadrant[];
   tasks: Task[];
@@ -109,6 +136,10 @@ export function makeTask(values: Partial<Task> & Pick<Task, "title">): Task {
 export const initialWorkspace = (): Workspace => ({
   config: { url: "https://api.openai.com/v1", key: "", model: "" },
   welcomed: false,
+  projectFolders: {},
+  archivedProjects: [],
+  trash: [],
+  deleted: {},
   projects: ["工作", "个人成长", "生活"],
   links: [],
   manualQuadrants: [],
@@ -221,7 +252,10 @@ export function tasksToMarkdown(tasks: Task[], title = "任务笔记") {
         );
       if (task.due) text.push(`  - 日期：${task.due}`);
       if (task.project) text.push(`  - 项目：${task.project}`);
-      if (task.folder) text.push(`  - 文件夹：${task.folder}`);
+      for (const folder of new Set(
+        [...(task.folders ?? []), task.folder].filter(Boolean),
+      ))
+        text.push(`  - 文件夹：${folder}`);
     }
     text.push("");
   }

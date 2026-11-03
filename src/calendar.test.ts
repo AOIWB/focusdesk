@@ -67,9 +67,10 @@ describe("自然语言日程", () => {
     expect(() => parseSchedule("2026-02-30十点上课", now)).toThrow("日期");
     expect(() => parseSchedule("明天14:00到12:00上课", now)).toThrow("结束");
     expect(() => localIntake("明天上课", [], "event", now)).toThrow("开始时间");
-    expect(() => localIntake("每周一十点上课", [], "auto", now)).toThrow(
-      "重复",
-    );
+    expect(localIntake("每周一十点上课", [], "auto", now)[0]).toMatchObject({
+      kind: "event",
+      value: { recurrence: { frequency: "weekly" } },
+    });
   });
   it("拆分日程保留当天上下文，仅唯一匹配才关联已有任务", () => {
     const task = makeTask({ title: "完成课程方案" });

@@ -1,21 +1,32 @@
 import { useState } from "react";
-import { Trash2, X } from "lucide-react";
+import FolderLinks from "./FolderLinks";
+import { Archive, Trash2, X } from "lucide-react";
 export default function ProjectEditor({
   original,
   names,
   onSave,
   onDelete,
   onClose,
+  folders,
+  onFolders,
+  onError,
+  onArchive,
 }: {
   original: string;
   names: string[];
-  onSave: (name: string) => void;
-  onDelete: () => void;
+  onSave: (name: string) => Promise<void>;
+  folders: string[];
+  onFolders: (folders: string[]) => void;
+  onError: (message: string) => void;
+  onArchive: () => void;
+  onDelete: (contents: boolean) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(original),
     [error, setError] = useState("");
-  function save() {
+  const [contents, setContents] = useState(false),
+    [busy, setBusy] = useState(false);
+  async function save() {
     const value = name.trim();
     if (!value) {
       setError("请输入项目名称");
@@ -25,7 +36,14 @@ export default function ProjectEditor({
       setError("项目名称已存在");
       return;
     }
-    onSave(value);
+    setBusy(true);
+    try {
+      await onSave(value);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -34,7 +52,7 @@ export default function ProjectEditor({
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
-          save();
+          void save();
         }}
       >
         <div className="modal-title">
@@ -57,6 +75,31 @@ export default function ProjectEditor({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        {original && (
+          <>
+            <FolderLinks
+              paths={folders}
+              onChange={onFolders}
+              onError={onError}
+            />
+            <button
+              type="button"
+              className="task-schedule-button"
+              onClick={onArchive}
+            >
+              <Archive size={15} />
+              归档项目
+            </button>
+            <label className="settings-toggle">
+              <input
+                type="checkbox"
+                checked={contents}
+                onChange={(e) => setContents(e.target.checked)}
+              />
+              删除项目时，同时将任务和日程移入回收站
+            </label>
+          </>
+        )}
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -64,14 +107,18 @@ export default function ProjectEditor({
         )}
         <div className="modal-actions">
           {original ? (
-            <button type="button" className="delete-project" onClick={onDelete}>
+            <button
+              type="button"
+              className="delete-project"
+              onClick={() => onDelete(contents)}
+            >
               <Trash2 size={15} />
               删除项目
             </button>
           ) : (
             <span />
           )}
-          <button type="submit" className="primary-button">
+          <button type="submit" disabled={busy} className="primary-button">
             保存项目
           </button>
         </div>

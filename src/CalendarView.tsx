@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus, Link2 } from "lucide-react";
 import type { CalendarEvent } from "./model";
 import {
@@ -15,10 +15,12 @@ import {
   type Schedule,
 } from "./calendar";
 import "./Calendar.css";
+import { expandEvents, shiftedEvent } from "./recurrence";
 const modes = { day: "日", week: "周", month: "月", year: "年" };
 const weekdays = ["一", "二", "三", "四", "五", "六", "日"];
 export default function Calendar({
-  events,
+  events: sourceEvents,
+  onReschedule,
   day,
   mode,
   onDay,
@@ -27,6 +29,7 @@ export default function Calendar({
   onOpen,
 }: {
   events: CalendarEvent[];
+  onReschedule: (event: CalendarEvent) => void;
   day: string;
   mode: CalendarMode;
   onDay: (day: string) => void;
@@ -37,6 +40,88 @@ export default function Calendar({
   const scroll = useRef<HTMLDivElement>(null);
   const today = dateKey(new Date());
   const days = mode === "day" ? [day] : weekDays(day);
+  const range =
+    mode === "year"
+      ? [`${day.slice(0, 4)}-01-01`, `${day.slice(0, 4)}-12-31`]
+      : mode === "month"
+        ? [monthDays(day)[0], monthDays(day)[41]]
+        : [days[0], days[days.length - 1]];
+  const expanded = expandEvents(sourceEvents, range[0], range[1]);
+  const [preview, setPreview] = useState<CalendarEvent | null>(null);
+  const events = expanded;
+  const previewRef = useRef<CalendarEvent | null>(null);
+  const [dragStyle, setDragStyle] = useState({ x: 0, y: 0, height: 0 });
+  const drag = useRef<{
+    event: CalendarEvent;
+    x: number;
+    y: number;
+    scrollTop: number;
+    dayWidth: number;
+    edge: "move" | "start" | "end";
+    moved: boolean;
+  } | null>(null);
+  const suppressClick = useRef(false);
+  function begin(e: PointerEvent<HTMLButtonElement>, event: CalendarEvent) {
+    if (e.button !== 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const edge =
+      e.clientY - rect.top < 6
+        ? "start"
+        : rect.bottom - e.clientY < 6
+          ? "end"
+          : "move";
+    const width = e.currentTarget.parentElement!.getBoundingClientRect().width;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = {
+      event,
+      x: e.clientX,
+      y: e.clientY,
+      scrollTop: scroll.current?.scrollTop ?? 0,
+      dayWidth: width,
+      edge,
+      moved: false,
+    };
+    suppressClick.current = false;
+  }
+  function move(e: PointerEvent<HTMLButtonElement>) {
+    const d = drag.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) return;
+    d.moved = true;
+    const minutes =
+      Math.round(
+        (e.clientY - d.y + (scroll.current?.scrollTop ?? 0) - d.scrollTop) / 15,
+      ) * 15;
+    const dayDelta =
+      mode === "week" && d.edge === "move"
+        ? Math.round((e.clientX - d.x) / d.dayWidth)
+        : 0;
+    const value = shiftedEvent(d.event, minutes, dayDelta, d.edge);
+    previewRef.current = value;
+    setPreview(value);
+    if (value === d.event) {
+      setDragStyle({ x: 0, y: 0, height: 0 });
+      return;
+    }
+    setDragStyle({
+      x: dayDelta * d.dayWidth,
+      y: d.edge === "end" ? 0 : minutes,
+      height: d.edge === "end" ? minutes : d.edge === "start" ? -minutes : 0,
+    });
+  }
+  function finish(e: PointerEvent<HTMLButtonElement>) {
+    const d = drag.current;
+    if (!d) return;
+    if (d.moved && previewRef.current) {
+      suppressClick.current = true;
+      onReschedule(previewRef.current);
+    }
+    drag.current = null;
+    setPreview(null);
+    previewRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId);
+  }
   useEffect(() => {
     if (scroll.current) {
       const first = events
@@ -161,17 +246,58 @@ export default function Calendar({
                     ({ event, start, end, column, columns }) => (
                       <button
                         key={event.id}
-                        className={`calendar-event ${event.taskId ? "linked" : ""}`}
+                        className={`calendar-event ${event.taskId ? "linked" : ""} ${preview?.id === event.id ? "is-dragging" : ""}`}
                         aria-label={`${event.title} ${scheduleLabel(event)}`}
                         title={`${event.title}\n${scheduleLabel(event)}`}
-                        onClick={() => onOpen(event)}
+                        onClick={() => {
+                          if (suppressClick.current) {
+                            suppressClick.current = false;
+                            return;
+                          }
+                          onOpen(event);
+                        }}
+                        onPointerDown={(e) => begin(e, event)}
+                        onPointerMove={move}
+                        onPointerUp={finish}
+                        onPointerCancel={() => {
+                          drag.current = null;
+                          setPreview(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            e.altKey &&
+                            ["ArrowUp", "ArrowDown"].includes(e.key)
+                          ) {
+                            e.preventDefault();
+                            onReschedule(
+                              shiftedEvent(
+                                event,
+                                e.key === "ArrowUp" ? -15 : 15,
+                                0,
+                                "move",
+                              ),
+                            );
+                          }
+                        }}
                         style={{
                           top: start,
-                          height: Math.max(18, end - start - 2),
+                          transform:
+                            preview?.id === event.id
+                              ? `translate(${dragStyle.x}px,${dragStyle.y}px)`
+                              : undefined,
+                          height: Math.max(
+                            18,
+                            end -
+                              start -
+                              2 +
+                              (preview?.id === event.id ? dragStyle.height : 0),
+                          ),
                           left: `calc(${(column / columns) * 100}% + 3px)`,
                           width: `calc(${100 / columns}% - 6px)`,
                         }}
                       >
+                        <i className="event-resize start" />
+                        <i className="event-resize end" />
                         <strong>
                           {event.taskId && <Link2 size={11} />} {event.title}
                         </strong>

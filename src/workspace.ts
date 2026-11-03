@@ -22,6 +22,10 @@ export function normalizeWorkspace(data: Workspace): Workspace {
   const workspace = {
     ...data,
     projects: data.projects ?? [],
+    projectFolders: data.projectFolders ?? {},
+    archivedProjects: data.archivedProjects ?? [],
+    trash: data.trash ?? [],
+    deleted: data.deleted ?? {},
     events: (data.events ?? []).map((event) => ({
       ...event,
       taskId: data.tasks.some((t) => t.id === event.taskId)
@@ -43,6 +47,15 @@ export function renameProject(
     events: workspace.events.map((e) =>
       e.project === from ? { ...e, project: to } : e,
     ),
+    archivedProjects: workspace.archivedProjects.map((p) =>
+      p === from ? to : p,
+    ),
+    projectFolders: Object.fromEntries(
+      Object.entries(workspace.projectFolders).map(([p, paths]) => [
+        p === from ? to : p,
+        paths,
+      ]),
+    ),
     projects: projectNames(workspace).map((p) => (p === from ? to : p)),
     tasks: workspace.tasks.map((t) =>
       t.project === from ? { ...t, project: to } : t,
@@ -54,6 +67,10 @@ export function deleteProject(workspace: Workspace, name: string): Workspace {
     ...workspace,
     events: workspace.events.map((e) =>
       e.project === name ? { ...e, project: "" } : e,
+    ),
+    archivedProjects: workspace.archivedProjects.filter((p) => p !== name),
+    projectFolders: Object.fromEntries(
+      Object.entries(workspace.projectFolders).filter(([p]) => p !== name),
     ),
     projects: projectNames(workspace).filter((p) => p !== name),
     tasks: workspace.tasks.map((t) =>
@@ -194,6 +211,7 @@ export function taskSearchText(task: Task) {
     notesText(task.notes),
     task.project,
     task.folder,
+    ...(task.folders ?? []),
     task.due,
     task.createdAt,
     task.done ? "已完成" : "待办",
@@ -215,9 +233,19 @@ export function searchWorkspace(workspace: Workspace, query: string) {
       matchesSearch(eventSearchText(workspace, e), query),
     ),
     tasks: workspace.tasks.filter((t) =>
-      matchesSearch(taskSearchText(t), query),
+      matchesSearch(
+        taskSearchText(t) +
+          "\n" +
+          (workspace.projectFolders[t.project] ?? []).join("\n"),
+        query,
+      ),
     ),
-    projects: projectNames(workspace).filter((p) => matchesSearch(p, query)),
+    projects: projectNames(workspace).filter((p) =>
+      matchesSearch(
+        p + "\n" + (workspace.projectFolders[p] ?? []).join("\n"),
+        query,
+      ),
+    ),
   };
 }
 export function mergeWorkspace(
@@ -242,6 +270,17 @@ export function mergeWorkspace(
       ),
     ],
     projects: [...workspace.projects, ...data.projects],
+    projectFolders: { ...data.projectFolders, ...workspace.projectFolders },
+    archivedProjects: [
+      ...new Set([...workspace.archivedProjects, ...data.archivedProjects]),
+    ],
+    trash: [
+      ...workspace.trash,
+      ...data.trash.filter(
+        (e) => !workspace.trash.some((old) => old.id === e.id),
+      ),
+    ],
+    deleted: { ...data.deleted, ...workspace.deleted },
     manualQuadrants: [
       ...new Set([...workspace.manualQuadrants, ...data.manualQuadrants]),
     ],
@@ -282,6 +321,7 @@ export function eventDetails(
         ...event,
         notes: task.notes,
         folder: task.folder,
+        folders: task.folders,
         project: task.project,
       }
     : event;
@@ -296,6 +336,8 @@ export function eventSearchText(workspace: Workspace, event: CalendarEvent) {
     value.end,
     value.project,
     value.folder,
+    ...(value.folders ?? []),
+    ...(workspace.projectFolders[value.project] ?? []),
     notesText(value.notes),
     task?.title,
     "日程",

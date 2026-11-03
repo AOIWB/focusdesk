@@ -35,3 +35,23 @@ export function saveWorkspace(workspace: Workspace) {
     });
   return queue;
 }
+
+export async function readLocal(key: string): Promise<string | null> {
+  if (!isTauri()) return readBrowserWorkspace(`local:${key}`);
+  const rows = await (
+    await db()
+  ).select<{ value: string }[]>(
+    "SELECT value FROM local_state WHERE key = $1",
+    [key],
+  );
+  return rows[0]?.value ?? null;
+}
+export async function writeLocal(key: string, value: string) {
+  if (!isTauri()) return writeBrowserWorkspace(value, `local:${key}`);
+  await (
+    await db()
+  ).execute(
+    "INSERT INTO local_state (key,value) VALUES ($1,$2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    [key, value],
+  );
+}

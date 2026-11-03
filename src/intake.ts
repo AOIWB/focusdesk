@@ -3,6 +3,7 @@ import {
   type Task,
   type CalendarEvent,
   type ModelConfig,
+  type Recurrence,
 } from "./model";
 import { completion } from "./ai";
 import { parseDate, parseSchedule } from "./scheduleParser";
@@ -59,13 +60,24 @@ export function localIntake(
             due: explicitDay ?? localParse(source, now).due,
           },
         };
-      if (
-        /每(?:天|周|星期|月|年)|工作日/.test(source) &&
-        (mode === "event" || /[点时]|[：:]\d/.test(source))
-      )
-        throw new Error("暂不支持重复日程，请指定一次日程的日期和时间");
+      const recurrence: Recurrence | undefined = /每天/.test(source)
+        ? { frequency: "daily" }
+        : /每(?:周|星期)/.test(source)
+          ? { frequency: "weekly" }
+          : /每月/.test(source)
+            ? { frequency: "monthly" }
+            : /每年/.test(source)
+              ? { frequency: "yearly" }
+              : undefined;
+      if (/工作日/.test(source))
+        throw new Error("请分别设置每周的具体日期，例如每周一上午十点");
+      const recurringSource = source
+        .replace(/每(周|星期)/, "$1")
+        .replace(/每天|每月|每年/, "");
       const parsed = parseSchedule(
-        !explicitDay && contextDay ? `${contextDay} ${source}` : source,
+        !explicitDay && contextDay
+          ? `${contextDay} ${recurringSource}`
+          : recurringSource,
         now,
       );
       if (parsed)
@@ -73,6 +85,7 @@ export function localIntake(
           kind: "event",
           value: {
             title: parsed.title,
+            recurrence,
             ...parsed.schedule,
             taskId: matchingTask(parsed.title, tasks),
           },
@@ -89,12 +102,10 @@ export async function parseIntake(
   mode: IntakeMode,
 ): Promise<IntakeItem[]> {
   if (!config.model.trim()) return localIntake(input, tasks, mode);
-  if (/每(?:天|周|星期|月|年)|工作日/.test(input) && mode !== "task")
-    throw new Error("暂不支持重复日程，请指定一次日程的日期和时间");
   const text = await completion(config, [
     {
       role: "system",
-      content: `你是松果的任务与日程整理助手。现在本地时间 ${new Date().toLocaleString("sv-SE")}。用户选择模式 ${mode}（auto自动判断，task只创建任务，event只创建日程）。只返回JSON：{"items":[{"kind":"task","title":"完成方案","description":"","quadrant":1,"due":"${dateKey(new Date())}","project":""},{"kind":"event","title":"上课","start":"YYYY-MM-DDTHH:mm","end":"YYYY-MM-DDTHH:mm","description":"","project":""}]}。这是格式示例，不是要创建的内容。任务是要完成的成果，截止日期或几点前完成属于任务；日程是特定时间要进行的活动，明确开始时间应创建日程。只有日期没有时刻默认创建任务。日程结束未明确则默认一小时，不虚构开始时间；event模式缺少开始时间时返回 {"error":"请补充开始时间"}。支持拆分多项，中文相对日期转本地时间。quadrant 0重要紧急1重要不紧急2紧急不重要3均不；默认1。项目未说明留空，不创建文件路径，不执行任务。`,
+      content: `你是松果的任务与日程整理助手。现在本地时间 ${new Date().toLocaleString("sv-SE")}。用户选择模式 ${mode}（auto自动判断，task只创建任务，event只创建日程）。只返回JSON：{"items":[{"kind":"task","title":"完成方案","description":"","quadrant":1,"due":"${dateKey(new Date())}","project":""},{"kind":"event","title":"上课","start":"YYYY-MM-DDTHH:mm","end":"YYYY-MM-DDTHH:mm","description":"","project":""}]}。这是格式示例，不是要创建的内容。任务是要完成的成果，截止日期或几点前完成属于任务；日程是特定时间要进行的活动，明确开始时间应创建日程。只有日期没有时刻默认创建任务。日程结束未明确则默认一小时，不虚构开始时间；event模式缺少开始时间时返回 {"error":"请补充开始时间"}。支持拆分多项，中文相对日期转本地时间。quadrant 0重要紧急1重要不紧急2紧急不重要3均不；默认1。重复日程提供 recurrence:{frequency:"daily"|"weekly"|"monthly"|"yearly",until:"YYYY-MM-DD"}，until可省略；每周指定星期将start设为下一次该星期。项目未说明留空，不创建文件路径，不执行任务。`,
     },
     { role: "user", content: input },
   ]);
@@ -124,7 +135,18 @@ export async function parseIntake(
         throw new Error("日程时间不完整或结束早于开始，请补充时间");
       return {
         kind: "event",
-        value: { ...common, ...schedule, taskId: matchingTask(title, tasks) },
+        value: {
+          ...common,
+          ...schedule,
+          taskId: matchingTask(title, tasks),
+          recurrence:
+            item.recurrence &&
+            ["daily", "weekly", "monthly", "yearly"].includes(
+              (item.recurrence as Recurrence).frequency,
+            )
+              ? (item.recurrence as Recurrence)
+              : undefined,
+        },
       };
     }
     if (mode === "event") throw new Error("请补充日程开始时间");

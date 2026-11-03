@@ -1,7 +1,7 @@
 {
   "name": "focusdesk",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -15,6 +15,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-global-shortcut": "^2.4.1",
+    "@tauri-apps/plugin-notification": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2.5.0",
     "@tauri-apps/plugin-sql": "^2.3.0",
     "@tiptap/core": "^3.32.2",
