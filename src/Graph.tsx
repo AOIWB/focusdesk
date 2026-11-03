@@ -1,5 +1,3 @@
-import { motion } from "motion/react";
-import { ease } from "./Motion";
 import { useState } from "react";
 import { ArrowRight, Link2, X } from "lucide-react";
 import {
@@ -83,10 +81,7 @@ export function TaskGraph({
           x2 = end.x - ux * (bSize / 2 + 7),
           y2 = end.y - uy * (bSize / 2 + 7);
         return (
-          <motion.path
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.32, ease }}
+          <path
             key={link.id}
             clipPath={`url(#quadrant-clip-${a.quadrant})`}
             data-source={a.id}
@@ -99,7 +94,7 @@ export function TaskGraph({
               {a.title} → {b.title}
               {link.automatic ? "（创建顺序）" : "（手动）"}
             </title>
-          </motion.path>
+          </path>
         );
       })}
     </svg>

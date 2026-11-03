@@ -6,6 +6,7 @@ import {
   Suspense,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -200,7 +201,14 @@ export default function App() {
     x: number;
     y: number;
     moved: boolean;
+    preview?: ReturnType<typeof pointToQuadrant>;
   } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    id: string;
+    change: ReturnType<typeof pointToQuadrant>;
+  } | null>(null);
+  const dragFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(dragFrame.current), []);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -341,7 +349,10 @@ export default function App() {
       clearInterval(timer);
     };
   }, [ready, device.notifications]);
-  const portableText = JSON.stringify(syncDocument(workspace));
+  const portableText = useMemo(
+    () => JSON.stringify(syncDocument(workspace)),
+    [workspace],
+  );
   useEffect(() => {
     if (!ready || !device.sync.enabled || !device.sync.auto || syncPlan) return;
     const timer = setTimeout(() => syncTrigger.current(), 30000);
@@ -599,17 +610,44 @@ export default function App() {
       );
     }
   };
-  const visible = workspace.tasks.filter(
-    (t) =>
-      t.done === (view === "done") &&
-      (Boolean(project) || !workspace.archivedProjects.includes(t.project)) &&
-      (project === "" || t.project === taskProject) &&
-      matchesSearch(
-        taskSearchText(t) +
-          "\n" +
-          (workspace.projectFolders[t.project] ?? []).join("\n"),
-        query,
+  const graphWorkspace = useMemo(
+    () =>
+      dragPreview
+        ? {
+            ...workspace,
+            tasks: workspace.tasks.map((t) =>
+              t.id === dragPreview.id ? { ...t, ...dragPreview.change } : t,
+            ),
+          }
+        : workspace,
+    [workspace, dragPreview],
+  );
+  const matchingTasks = useMemo(
+    () =>
+      workspace.tasks.filter(
+        (t) =>
+          t.done === (view === "done") &&
+          (Boolean(project) ||
+            !workspace.archivedProjects.includes(t.project)) &&
+          (project === "" || t.project === taskProject) &&
+          (!query.trim() ||
+            matchesSearch(
+              taskSearchText(t) +
+                "\n" +
+                (workspace.projectFolders[t.project] ?? []).join("\n"),
+              query,
+            )),
       ),
+    [workspace, view, project, taskProject, query],
+  );
+  const visible = useMemo(
+    () =>
+      dragPreview
+        ? matchingTasks.map((t) =>
+            t.id === dragPreview.id ? { ...t, ...dragPreview.change } : t,
+          )
+        : matchingTasks,
+    [matchingTasks, dragPreview],
   );
   const active = workspace.tasks.find((t) => t.id === selected);
   const projects = projectNames(workspace);
@@ -618,7 +656,7 @@ export default function App() {
   );
   const focusedNode = connectSource || hovered || selected;
   const relatedNodes = new Set(
-    graphLinks(workspace).flatMap((link) =>
+    graphLinks(graphWorkspace).flatMap((link) =>
       link.source === focusedNode
         ? [link.target]
         : link.target === focusedNode
@@ -838,18 +876,36 @@ export default function App() {
     const dx = event.clientX - g.startX,
       dy = event.clientY - g.startY;
     if (Math.hypot(dx, dy) < 4 && !g.moved) return;
+    if (!g.moved) setSelected(null);
     g.moved = true;
-    setSelected(null);
-    updateTask(
-      g.id,
-      pointToQuadrant(g.x + dx, g.y + dy, boardSize.width, boardSize.height),
+    g.preview = pointToQuadrant(
+      g.x + dx,
+      g.y + dy,
+      boardSize.width,
+      boardSize.height,
     );
+    if (!dragFrame.current)
+      dragFrame.current = requestAnimationFrame(() => {
+        dragFrame.current = 0;
+        if (gesture.current?.preview)
+          setDragPreview({
+            id: gesture.current.id,
+            change: gesture.current.preview,
+          });
+      });
+  }
+  function cancelGesture() {
+    cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = 0;
+    gesture.current = null;
+    setDragPreview(null);
   }
   function endGesture(event: PointerEvent) {
     const g = gesture.current;
     if (!g) return;
-    if (!g.moved) chooseTask(g.id);
-    gesture.current = null;
+    if (g.moved && g.preview) updateTask(g.id, g.preview);
+    else chooseTask(g.id);
+    cancelGesture();
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
   }
@@ -1382,7 +1438,7 @@ export default function App() {
                   </div>
                 </div>
                 <TaskGraph
-                  workspace={workspace}
+                  workspace={graphWorkspace}
                   visible={visible}
                   position={position}
                   width={boardSize.width}
@@ -1409,15 +1465,10 @@ export default function App() {
                     const pos = position(task);
                     return (
                       <motion.div
-                        {...fade}
-                        animate={{
-                          opacity:
-                            focusedNode &&
-                            focusedNode !== task.id &&
-                            !relatedNodes.has(task.id)
-                              ? 0.32
-                              : 1,
-                        }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0, pointerEvents: "none" }}
+                        transition={{ duration: 0.2 }}
                         key={task.id}
                         className={`task-node ${selected === task.id ? "selected" : ""} ${focusedNode === task.id ? "highlighted" : ""} ${relatedNodes.has(task.id) ? "related" : ""} ${focusedNode && focusedNode !== task.id && !relatedNodes.has(task.id) ? "muted" : ""}`}
                         style={
@@ -1441,9 +1492,7 @@ export default function App() {
                         onPointerDown={(e) => startGesture(e, task)}
                         onPointerMove={moveGesture}
                         onPointerUp={endGesture}
-                        onPointerCancel={() => {
-                          gesture.current = null;
-                        }}
+                        onPointerCancel={cancelGesture}
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
@@ -1452,9 +1501,11 @@ export default function App() {
                           }
                         }}
                       >
-                        <span className="node-dot" />
-                        <span className="node-title">
-                          {task.title || "新任务"}
+                        <span className="node-appearance">
+                          <span className="node-dot" />
+                          <span className="node-title">
+                            {task.title || "新任务"}
+                          </span>
                         </span>
                       </motion.div>
                     );

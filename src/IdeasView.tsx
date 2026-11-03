@@ -1,5 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
-import { ease } from "./Motion";
+import { useGraphMotion } from "./graphMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, Scan, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Idea } from "./model";
@@ -21,6 +20,8 @@ export default function IdeasView({
   const [day, setDay] = useState(dateKey(new Date()));
   const [hover, setHover] = useState<string | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const [panning, setPanning] = useState(false);
+  const smoothCamera = useGraphMotion(camera, panning);
   const [size, setSize] = useState({ width: 1000, height: 600 });
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(
@@ -30,25 +31,48 @@ export default function IdeasView({
     () => filterIdeas(ideas, period, day, query),
     [ideas, period, day, query],
   );
-  const nodes = visible.map((idea, i) => {
-    const columns = Math.min(
-      5,
-      Math.max(1, Math.ceil(Math.sqrt(visible.length))),
-    );
-    const row = Math.floor(i / columns),
-      col = row % 2 ? columns - 1 - (i % columns) : i % columns;
-    return {
-      ...idea,
-      px: (col - (columns - 1) / 2) * 220 + Math.sin(i * 3.7) * 22,
-      py:
-        (row - (Math.ceil(visible.length / columns) - 1) / 2) * 155 +
-        Math.cos(i * 2.3) * 28,
-    };
-  });
+  const targets = useMemo(
+    () =>
+      visible.map((idea, i) => {
+        const columns = Math.min(
+          5,
+          Math.max(1, Math.ceil(Math.sqrt(visible.length))),
+        );
+        const row = Math.floor(i / columns),
+          col = row % 2 ? columns - 1 - (i % columns) : i % columns;
+        return {
+          ...idea,
+          px: (col - (columns - 1) / 2) * 220 + Math.sin(i * 3.7) * 22,
+          py:
+            (row - (Math.ceil(visible.length / columns) - 1) / 2) * 155 +
+            Math.cos(i * 2.3) * 28,
+        };
+      }),
+    [visible],
+  );
+  const coordinates = useMemo(
+    () =>
+      Object.fromEntries(
+        targets.flatMap((n) => [
+          [n.id + ":x", n.px],
+          [n.id + ":y", n.py],
+        ]),
+      ),
+    [targets],
+  );
+  const points = useGraphMotion(coordinates);
+  const nodes = targets.map((n) => ({
+    ...n,
+    px: points[n.id + ":x"] ?? n.px,
+    py: points[n.id + ":y"] ?? n.py,
+  }));
   const edges = ideaEdges(visible);
   function fit() {
-    const width = Math.max(400, ...nodes.map((n) => Math.abs(n.px) * 2 + 230)),
-      height = Math.max(260, ...nodes.map((n) => Math.abs(n.py) * 2 + 120));
+    const width = Math.max(
+        400,
+        ...targets.map((n) => Math.abs(n.px) * 2 + 230),
+      ),
+      height = Math.max(260, ...targets.map((n) => Math.abs(n.py) * 2 + 120));
     setCamera({
       x: 0,
       y: 0,
@@ -146,11 +170,13 @@ export default function IdeasView({
           aria-label="按创建顺序连接的灵感"
           onPointerDown={(e) => {
             if ((e.target as Element).closest("[data-idea]")) return;
+            setPanning(true);
+            setCamera(smoothCamera);
             drag.current = {
               x: e.clientX,
               y: e.clientY,
-              cx: camera.x,
-              cy: camera.y,
+              cx: smoothCamera.x,
+              cy: smoothCamera.y,
             };
             e.currentTarget.setPointerCapture(e.pointerId);
           }}
@@ -165,9 +191,11 @@ export default function IdeasView({
           }}
           onPointerUp={() => {
             drag.current = null;
+            setPanning(false);
           }}
           onPointerCancel={() => {
             drag.current = null;
+            setPanning(false);
           }}
         >
           <defs>
@@ -184,23 +212,13 @@ export default function IdeasView({
             </marker>
           </defs>
           <g
-            transform={`translate(${size.width / 2 + camera.x},${size.height / 2 + camera.y}) scale(${camera.scale})`}
+            transform={`translate(${size.width / 2 + smoothCamera.x},${size.height / 2 + smoothCamera.y}) scale(${smoothCamera.scale})`}
           >
             {edges.map((e) => {
               const a = nodes.find((n) => n.id === e.source)!,
                 b = nodes.find((n) => n.id === e.target)!;
               return (
-                <motion.line
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{
-                    pathLength: 1,
-                    opacity: 1,
-                    x1: a.px,
-                    y1: a.py,
-                    x2: b.px,
-                    y2: b.py,
-                  }}
-                  transition={{ duration: 0.32, ease }}
+                <line
                   key={e.target}
                   x1={a.px}
                   y1={a.py}
@@ -214,50 +232,55 @@ export default function IdeasView({
                 />
               );
             })}
-            <AnimatePresence initial={false}>
-              {nodes.map((n, i) => (
-                <motion.g
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1, x: n.px, y: n.py }}
-                  exit={{ opacity: 0, pointerEvents: "none" }}
-                  transition={{ duration: 0.28, ease }}
-                  key={n.id}
-                  data-idea="true"
-                >
-                  <foreignObject x="-100" y="-20" width="200" height="100">
-                    <button
-                      className={`idea-star ${hover === n.id ? "active" : ""}`}
-                      aria-label={`灵感：${n.title}`}
-                      onMouseEnter={() => setHover(n.id)}
-                      onMouseLeave={() => setHover(null)}
-                      onFocus={() => setHover(n.id)}
-                      onBlur={() => setHover(null)}
-                      onClick={() => onOpen(n)}
-                    >
-                      <svg
-                        width="28"
-                        height="28"
-                        viewBox="-14 -14 28 28"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M0,-10 Q2,-2 10,0 Q2,2 0,10 Q-2,2 -10,0 Q-2,-2 0,-10Z"
-                          fill={i === nodes.length - 1 ? "#8c9caf" : "#9099a6"}
-                        />
-                        <circle r="2.5" fill="#687586" />
-                      </svg>
-                      <span>{n.title}</span>
-                      <time>
-                        {new Date(n.createdAt).toLocaleDateString("zh-CN", {
-                          month: "2-digit",
-                          day: "2-digit",
-                        })}
-                      </time>
-                    </button>
-                  </foreignObject>
-                </motion.g>
-              ))}
-            </AnimatePresence>
+            {nodes.map((n) => (
+              <g
+                key={n.id}
+                data-idea="true"
+                transform={`translate(${n.px},${n.py})`}
+                className={`idea-node ${hover === n.id ? "active" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label={`灵感：${n.title}`}
+                onPointerEnter={() => setHover(n.id)}
+                onPointerLeave={() => setHover(null)}
+                onFocus={() => setHover(n.id)}
+                onBlur={() => setHover(null)}
+                onClick={() => onOpen(n)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpen(n);
+                  }
+                }}
+              >
+                <title>{n.title}</title>
+                <rect
+                  className="idea-hit"
+                  x="-102"
+                  y="-22"
+                  width="204"
+                  height="98"
+                  rx="12"
+                />
+                <circle className="idea-halo" r="17" />
+                <path
+                  className="idea-spark"
+                  d="M0,-10 Q2,-2 10,0 Q2,2 0,10 Q-2,2 -10,0 Q-2,-2 0,-10Z"
+                />
+                <circle className="idea-core" r="2.5" />
+                <text className="idea-label" y="35" textAnchor="middle">
+                  {Array.from(n.title).length > 14
+                    ? Array.from(n.title).slice(0, 14).join("") + "…"
+                    : n.title}
+                </text>
+                <text className="idea-date-label" y="57" textAnchor="middle">
+                  {new Date(n.createdAt).toLocaleDateString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
+                </text>
+              </g>
+            ))}
           </g>
         </svg>
         <div className="ideas-zoom">

@@ -531,7 +531,6 @@ kbd {
   user-select: none;
   cursor: grab;
   color: #50555e;
-  transition: opacity 160ms ease;
   outline: none;
 }
 .node-dot {
@@ -547,6 +546,7 @@ kbd {
 .task-node:hover,
 .task-node.selected,
 .task-node:focus-visible {
+  outline: none;
   z-index: 4;
 }
 .task-node.highlighted .node-dot,
@@ -558,9 +558,6 @@ kbd {
 }
 .task-node.related .node-dot {
   background: #8c9ebc;
-}
-.task-node.muted {
-  opacity: 0.32;
 }
 .task-node:active {
   cursor: grabbing;

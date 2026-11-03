@@ -53,38 +53,62 @@
   touch-action: none;
   cursor: grab;
 }
-.idea-star {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  background: none;
-  color: #767f8c;
+.idea-node,
+.ideas-canvas .idea-node:focus-visible {
   cursor: pointer;
+  outline: none;
 }
-.idea-star > svg {
-  flex-shrink: 0;
-  margin: 5px 0 10px;
+.idea-hit {
+  fill: transparent;
+  pointer-events: all;
 }
-.idea-star > span {
-  max-width: 190px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 13px;
+.idea-node > :not(.idea-hit) {
+  pointer-events: none;
 }
-.idea-star > time {
-  margin-top: 6px;
-  font-size: 10px;
-  color: #b1b7c0;
+.idea-spark {
+  fill: #9099a6;
+  transition: fill 200ms ease;
+}
+.idea-core {
+  fill: #687586;
+  transition: fill 200ms ease;
+}
+.idea-halo {
+  fill: #8cadd0;
   opacity: 0;
+  transition: opacity 200ms ease;
 }
-.idea-star.active {
-  color: #415774;
+.idea-label {
+  font-size: 13px;
+  fill: #767f8c;
+  transition: fill 200ms ease;
 }
-.idea-star.active > time {
+.idea-date-label {
+  font-size: 10px;
+  fill: #9ba5b2;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.idea-node.active .idea-halo {
+  opacity: 0.12;
+}
+.idea-node.active .idea-spark {
+  fill: #6e8eb5;
+}
+.idea-node.active .idea-core {
+  fill: #496d98;
+}
+.idea-node.active .idea-label {
+  fill: #415774;
+}
+.idea-node.active .idea-date-label {
   opacity: 1;
+}
+.idea-node:focus-visible .idea-halo {
+  opacity: 0.4;
+  fill: none;
+  stroke: #8ca8c8;
+  stroke-width: 1;
 }
 .ideas-empty {
   position: absolute;
