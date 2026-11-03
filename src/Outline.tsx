@@ -1,10 +1,11 @@
+import { AnimatePresence, motion } from "motion/react";
+import { Reveal, fade } from "./Motion";
 import FolderLinks, { folderPaths } from "./FolderLinks";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
   CalendarDays,
   NotebookPen,
-  ChevronDown,
   ChevronRight,
   Download,
   Folder,
@@ -114,11 +115,12 @@ export default function Outline({
                     })
                   }
                 >
-                  {folded ? (
-                    <ChevronRight size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
+                  <ChevronRight
+                    size={16}
+                    style={{
+                      transform: folded ? "rotate(0deg)" : "rotate(90deg)",
+                    }}
+                  />
                 </button>
                 <h3>{group.title}</h3>
                 <span className="outline-count">{items.length}</span>
@@ -130,183 +132,203 @@ export default function Outline({
                   <Plus size={17} />
                 </button>
               </div>
-              {!folded && (
-                <div className="outline-children">
-                  {items.map((task) => (
-                    <article key={task.id} className="outline-task">
-                      <div className="outline-task-row">
-                        <button
-                          className="outline-task-toggle"
-                          title={`${expanded.has(task.id) ? "收起" : "展开"}${task.title || "新任务"}详情`}
-                          aria-expanded={expanded.has(task.id)}
-                          aria-controls={`task-details-${task.id}`}
-                          onClick={() => toggleTask(task.id)}
+              <AnimatePresence initial={false}>
+                {!folded && (
+                  <Reveal className="outline-children">
+                    <AnimatePresence initial={false}>
+                      {items.map((task) => (
+                        <motion.article
+                          layout="position"
+                          {...fade}
+                          key={task.id}
+                          className="outline-task"
                         >
-                          <ChevronRight size={15} />
-                        </button>
-                        <span className="outline-bullet" aria-hidden="true">
-                          <span />
-                        </span>
-                        <input
-                          ref={(node) => {
-                            if (node) fields.current.set(task.id, node);
-                            else fields.current.delete(task.id);
-                          }}
-                          className="outline-task-title"
-                          aria-label={`笔记任务：${task.title || "新任务"}`}
-                          value={task.title}
-                          placeholder="新任务"
-                          onChange={(e) =>
-                            onUpdate(task.id, { title: e.target.value })
-                          }
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              !e.nativeEvent.isComposing
-                            ) {
-                              e.preventDefault();
-                              add(task.quadrant);
-                            }
-                          }}
-                        />
-                        {task.due && (
-                          <button
-                            className="outline-date"
-                            onClick={() => toggleTask(task.id)}
-                          >
-                            {task.due.slice(5).replace("-", "/")}
-                          </button>
-                        )}
-                        {task.folder && (
-                          <button
-                            className="icon-button"
-                            title={`打开${task.title}文件夹`}
-                            onClick={() => onOpenFolder(task.folder)}
-                          >
-                            <Folder size={14} />
-                          </button>
-                        )}
-                        <button
-                          className="icon-button outline-open-notes"
-                          title={`打开${task.title || "新任务"}笔记`}
-                          onClick={() => onOpenNotes(task.id)}
-                        >
-                          <NotebookPen size={16} />
-                        </button>
-                        <button
-                          className="icon-button outline-complete"
-                          title={`完成${task.title}`}
-                          onClick={() => onUpdate(task.id, { done: true })}
-                        >
-                          <Check size={15} />
-                        </button>
-                      </div>
-                      {expanded.has(task.id) && (
-                        <div
-                          className="outline-task-details"
-                          id={`task-details-${task.id}`}
-                        >
-                          <button
-                            className="task-schedule-button"
-                            onClick={() => onSchedule(task)}
-                          >
-                            <CalendarDays size={15} />
-                            安排时间
-                          </button>
-                          <button
-                            className="open-task-notes"
-                            onClick={() => onOpenNotes(task.id)}
-                          >
-                            <NotebookPen size={16} /> 打开笔记
-                          </button>
-                          <textarea
-                            aria-label={`${task.title}的说明`}
-                            placeholder="任务说明"
-                            value={task.description}
-                            onChange={(e) =>
-                              onUpdate(task.id, { description: e.target.value })
-                            }
-                          />
-                          <div className="outline-fields">
-                            <label>
-                              象限
-                              <select
-                                aria-label={`${task.title}的象限`}
-                                value={task.quadrant}
-                                onChange={(e) =>
-                                  onUpdate(task.id, {
-                                    quadrant: Number(
-                                      e.target.value,
-                                    ) as Quadrant,
-                                  })
-                                }
-                              >
-                                {outlineGroups.map((g) => (
-                                  <option key={g.quadrant} value={g.quadrant}>
-                                    {g.title}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              截止日期
-                              <input
-                                aria-label={`${task.title}的截止日期`}
-                                type="date"
-                                value={task.due}
-                                onChange={(e) =>
-                                  onUpdate(task.id, { due: e.target.value })
-                                }
-                              />
-                            </label>
-                            <label>
-                              项目
-                              <select
-                                aria-label={`${task.title}的项目`}
-                                value={task.project}
-                                onChange={(e) =>
-                                  onUpdate(task.id, { project: e.target.value })
-                                }
-                              >
-                                <option value="">未分类</option>
-                                {projects.map((name) => (
-                                  <option key={name} value={name}>
-                                    {name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                          <FolderLinks
-                            paths={folderPaths(task)}
-                            inherited={projectFolders[task.project] ?? []}
-                            onChange={(folders) =>
-                              onUpdate(task.id, { folder: "", folders })
-                            }
-                            onError={onError}
-                          />
-                          <div className="outline-folder">
+                          <div className="outline-task-row">
                             <button
-                              className="icon-button"
-                              title={`删除${task.title}`}
-                              onClick={() => onDelete(task.id)}
+                              className="outline-task-toggle"
+                              title={`${expanded.has(task.id) ? "收起" : "展开"}${task.title || "新任务"}详情`}
+                              aria-expanded={expanded.has(task.id)}
+                              aria-controls={`task-details-${task.id}`}
+                              onClick={() => toggleTask(task.id)}
                             >
-                              <Trash2 size={14} />
+                              <ChevronRight size={15} />
+                            </button>
+                            <span className="outline-bullet" aria-hidden="true">
+                              <span />
+                            </span>
+                            <input
+                              ref={(node) => {
+                                if (node) fields.current.set(task.id, node);
+                                else fields.current.delete(task.id);
+                              }}
+                              className="outline-task-title"
+                              aria-label={`笔记任务：${task.title || "新任务"}`}
+                              value={task.title}
+                              placeholder="新任务"
+                              onChange={(e) =>
+                                onUpdate(task.id, { title: e.target.value })
+                              }
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "Enter" &&
+                                  !e.nativeEvent.isComposing
+                                ) {
+                                  e.preventDefault();
+                                  add(task.quadrant);
+                                }
+                              }}
+                            />
+                            {task.due && (
+                              <button
+                                className="outline-date"
+                                onClick={() => toggleTask(task.id)}
+                              >
+                                {task.due.slice(5).replace("-", "/")}
+                              </button>
+                            )}
+                            {task.folder && (
+                              <button
+                                className="icon-button"
+                                title={`打开${task.title}文件夹`}
+                                onClick={() => onOpenFolder(task.folder)}
+                              >
+                                <Folder size={14} />
+                              </button>
+                            )}
+                            <button
+                              className="icon-button outline-open-notes"
+                              title={`打开${task.title || "新任务"}笔记`}
+                              onClick={() => onOpenNotes(task.id)}
+                            >
+                              <NotebookPen size={16} />
+                            </button>
+                            <button
+                              className="icon-button outline-complete"
+                              title={`完成${task.title}`}
+                              onClick={() => onUpdate(task.id, { done: true })}
+                            >
+                              <Check size={15} />
                             </button>
                           </div>
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                  <button
-                    className="outline-add-row"
-                    onClick={() => add(group.quadrant)}
-                  >
-                    <Plus size={14} />
-                    添加任务
-                  </button>
-                </div>
-              )}
+                          <AnimatePresence initial={false}>
+                            {expanded.has(task.id) && (
+                              <Reveal
+                                className="outline-task-details"
+                                id={`task-details-${task.id}`}
+                              >
+                                <button
+                                  className="task-schedule-button"
+                                  onClick={() => onSchedule(task)}
+                                >
+                                  <CalendarDays size={15} />
+                                  安排时间
+                                </button>
+                                <button
+                                  className="open-task-notes"
+                                  onClick={() => onOpenNotes(task.id)}
+                                >
+                                  <NotebookPen size={16} /> 打开笔记
+                                </button>
+                                <textarea
+                                  aria-label={`${task.title}的说明`}
+                                  placeholder="任务说明"
+                                  value={task.description}
+                                  onChange={(e) =>
+                                    onUpdate(task.id, {
+                                      description: e.target.value,
+                                    })
+                                  }
+                                />
+                                <div className="outline-fields">
+                                  <label>
+                                    象限
+                                    <select
+                                      aria-label={`${task.title}的象限`}
+                                      value={task.quadrant}
+                                      onChange={(e) =>
+                                        onUpdate(task.id, {
+                                          quadrant: Number(
+                                            e.target.value,
+                                          ) as Quadrant,
+                                        })
+                                      }
+                                    >
+                                      {outlineGroups.map((g) => (
+                                        <option
+                                          key={g.quadrant}
+                                          value={g.quadrant}
+                                        >
+                                          {g.title}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    截止日期
+                                    <input
+                                      aria-label={`${task.title}的截止日期`}
+                                      type="date"
+                                      value={task.due}
+                                      onChange={(e) =>
+                                        onUpdate(task.id, {
+                                          due: e.target.value,
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    项目
+                                    <select
+                                      aria-label={`${task.title}的项目`}
+                                      value={task.project}
+                                      onChange={(e) =>
+                                        onUpdate(task.id, {
+                                          project: e.target.value,
+                                        })
+                                      }
+                                    >
+                                      <option value="">未分类</option>
+                                      {projects.map((name) => (
+                                        <option key={name} value={name}>
+                                          {name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                </div>
+                                <FolderLinks
+                                  paths={folderPaths(task)}
+                                  inherited={projectFolders[task.project] ?? []}
+                                  onChange={(folders) =>
+                                    onUpdate(task.id, { folder: "", folders })
+                                  }
+                                  onError={onError}
+                                />
+                                <div className="outline-folder">
+                                  <button
+                                    className="icon-button"
+                                    title={`删除${task.title}`}
+                                    onClick={() => onDelete(task.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </Reveal>
+                            )}
+                          </AnimatePresence>
+                        </motion.article>
+                      ))}
+                    </AnimatePresence>
+                    <button
+                      className="outline-add-row"
+                      onClick={() => add(group.quadrant)}
+                    >
+                      <Plus size={14} />
+                      添加任务
+                    </button>
+                  </Reveal>
+                )}
+              </AnimatePresence>
             </section>
           );
         })}

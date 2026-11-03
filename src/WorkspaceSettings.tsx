@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { useEffect, useState } from "react";
 import { X, FolderOpen, ArchiveRestore, RotateCcw } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
@@ -85,7 +86,7 @@ export default function WorkspaceSettings({
     setMessage("已创建工作目录，并为现有项目建立文件夹");
   }
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <section
         className="workspace-settings"
         role="dialog"
@@ -463,6 +464,6 @@ export default function WorkspaceSettings({
           )}
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

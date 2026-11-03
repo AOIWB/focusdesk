@@ -205,10 +205,6 @@
 .is-collapsed > .notes-item-controls .notes-fold svg {
   transform: rotate(0);
 }
-.is-collapsed > .notes-item-content > [data-node-view-content-react] > ul,
-.is-collapsed > .notes-item-content > [data-node-view-content-react] > ol {
-  display: none;
-}
 .notes-item-content > [data-node-view-content-react] > ul,
 .notes-item-content > [data-node-view-content-react] > ol {
   border-left: 1px solid #eceef1;
@@ -362,3 +358,6 @@
   color: #4b719e;
   text-decoration: underline;
 }
+
+.is-collapsed > .notes-item-content > [data-node-view-content-react] > ul,
+.is-collapsed > .notes-item-content > [data-node-view-content-react] > ol { display: none; }

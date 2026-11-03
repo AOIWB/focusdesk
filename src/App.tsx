@@ -1,3 +1,6 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { ease, fade, useSurfaceMotion } from "./Motion";
+import { Overlay } from "./Motion";
 import {
   lazy,
   Suspense,
@@ -115,6 +118,7 @@ import {
 const TaskNotes = lazy(() => import("./TaskNotes"));
 
 export default function App() {
+  const reducedMotion = useReducedMotion();
   const {
     workspace,
     current: workspaceRef,
@@ -957,6 +961,7 @@ export default function App() {
     transformOrigin:
       activePosition.x > boardSize.width / 2 ? "right center" : "left center",
   };
+  const surface = useSurfaceMotion(view + ":" + (project ?? "uncategorized"));
   if (loadError)
     return (
       <div className="startup">
@@ -973,8 +978,13 @@ export default function App() {
     );
   return (
     <div className={`app ${sidebar ? "" : "collapsed"}`}>
-      {sidebar && (
-        <aside className="sidebar">
+      <motion.div
+        className="sidebar-shell"
+        animate={{ width: sidebar ? "var(--sidebar-width)" : 0 }}
+        initial={false}
+        transition={{ duration: reducedMotion ? 0 : 0.26, ease }}
+      >
+        <aside className="sidebar" inert={!sidebar} aria-hidden={!sidebar}>
           <div className="brand">
             <img className="brand-mark" src="/pinecone.svg" alt="" />
             <strong aria-label="松果 Pinecone">松果</strong>
@@ -1119,7 +1129,7 @@ export default function App() {
             </button>
           </div>
         </aside>
-      )}
+      </motion.div>
       <main className="main">
         <header className="topbar">
           <div>
@@ -1271,449 +1281,487 @@ export default function App() {
             </label>
           </div>
         </section>
-        {view === "ideas" ? (
-          <IdeasView
-            ideas={workspace.ideas}
-            query={query}
-            onCreate={() => setCapture({ idea: true })}
-            onOpen={(idea) => setNotesTaskId(idea.id)}
-          />
-        ) : view === "calendar" ? (
-          <Calendar
-            events={workspace.events.filter(
-              (event) =>
-                (project === "" ||
-                  eventDetails(workspace, event).project === taskProject) &&
-                (Boolean(project) ||
-                  !workspace.archivedProjects.includes(
-                    eventDetails(workspace, event).project,
-                  )) &&
-                matchesSearch(eventSearchText(workspace, event), query),
-            )}
-            deadlines={visible.filter((t) => Boolean(t.due))}
-            onTask={(task) => {
-              setView("board");
-              setProject(task.project || null);
-              setSelected(task.id);
-            }}
-            day={calendarDay}
-            mode={calendarMode}
-            onDay={setCalendarDay}
-            onMode={setCalendarMode}
-            onCreate={newEvent}
-            onOpen={setEventDraft}
-            onReschedule={(event) =>
-              event.recurrence ? setEventDraft(event) : saveEvent(event)
-            }
-          />
-        ) : view === "board" ? (
-          <div className="board-shell">
-            <div
-              className="board"
-              ref={boardRef}
-              onClick={() => setSelected(null)}
-            >
-              {quadrants.map((q, i) => (
-                <section
-                  key={q.title}
-                  className={`quadrant ${q.color}`}
-                  style={{
-                    gridColumn: 2 - (i % 2),
-                    gridRow: Math.floor(i / 2) + 1,
-                  }}
-                >
-                  <div className="quadrant-header">
-                    <div className="quadrant-symbol">
-                      {["↗", "◷", "ϟ", "☁"][i]}
-                    </div>
-                    <div>
-                      <h2>
-                        {q.title}
-                        <span>
-                          {visible.filter((t) => t.quadrant === i).length}
-                        </span>
-                      </h2>
-                    </div>
-                    {workspace.manualQuadrants.includes(i as Quadrant) && (
+        <div className="workspace-surface" ref={surface}>
+          {view === "ideas" ? (
+            <IdeasView
+              ideas={workspace.ideas}
+              query={query}
+              onCreate={() => setCapture({ idea: true })}
+              onOpen={(idea) => setNotesTaskId(idea.id)}
+            />
+          ) : view === "calendar" ? (
+            <Calendar
+              events={workspace.events.filter(
+                (event) =>
+                  (project === "" ||
+                    eventDetails(workspace, event).project === taskProject) &&
+                  (Boolean(project) ||
+                    !workspace.archivedProjects.includes(
+                      eventDetails(workspace, event).project,
+                    )) &&
+                  matchesSearch(eventSearchText(workspace, event), query),
+              )}
+              deadlines={visible.filter((t) => Boolean(t.due))}
+              onTask={(task) => {
+                setView("board");
+                setProject(task.project || null);
+                setSelected(task.id);
+              }}
+              day={calendarDay}
+              mode={calendarMode}
+              onDay={setCalendarDay}
+              onMode={setCalendarMode}
+              onCreate={newEvent}
+              onOpen={setEventDraft}
+              onReschedule={(event) =>
+                event.recurrence ? setEventDraft(event) : saveEvent(event)
+              }
+            />
+          ) : view === "board" ? (
+            <div className="board-shell">
+              <div
+                className="board"
+                ref={boardRef}
+                onClick={() => setSelected(null)}
+              >
+                {quadrants.map((q, i) => (
+                  <section
+                    key={q.title}
+                    className={`quadrant ${q.color}`}
+                    style={{
+                      gridColumn: 2 - (i % 2),
+                      gridRow: Math.floor(i / 2) + 1,
+                    }}
+                  >
+                    <div className="quadrant-header">
+                      <div className="quadrant-symbol">
+                        {["↗", "◷", "ϟ", "☁"][i]}
+                      </div>
+                      <div>
+                        <h2>
+                          {q.title}
+                          <span>
+                            {visible.filter((t) => t.quadrant === i).length}
+                          </span>
+                        </h2>
+                      </div>
+                      {workspace.manualQuadrants.includes(i as Quadrant) && (
+                        <button
+                          className="icon-button reset-links"
+                          title={`恢复${q.title}按时间连接`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setWorkspace((w) => resetLinks(w, i as Quadrant));
+                          }}
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
                       <button
-                        className="icon-button reset-links"
-                        title={`恢复${q.title}按时间连接`}
+                        title={`添加到${q.title}`}
+                        className="quadrant-add icon-button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setWorkspace((w) => resetLinks(w, i as Quadrant));
+                          setCapture({ quadrant: i as Quadrant });
                         }}
                       >
-                        <RotateCcw size={14} />
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                  </section>
+                ))}
+                <div
+                  className="coordinate-axes"
+                  aria-label="横轴：紧急性，向右增加；纵轴：重要性，向上增加"
+                >
+                  <div className="x-axis">
+                    <span className="axis-label">紧急性</span>
+                  </div>
+                  <div className="y-axis">
+                    <span className="axis-label">重要性</span>
+                  </div>
+                </div>
+                <TaskGraph
+                  workspace={workspace}
+                  visible={visible}
+                  position={position}
+                  width={boardSize.width}
+                  height={boardSize.height}
+                  selected={focusedNode}
+                />
+                {connectSource && (
+                  <div className="connect-banner">
+                    <Link2 size={14} />
+                    选择同象限任务
+                    <button
+                      title="取消连线"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConnectSource(null);
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                <AnimatePresence initial={false}>
+                  {visible.map((task) => {
+                    const pos = position(task);
+                    return (
+                      <motion.div
+                        {...fade}
+                        animate={{
+                          opacity:
+                            focusedNode &&
+                            focusedNode !== task.id &&
+                            !relatedNodes.has(task.id)
+                              ? 0.32
+                              : 1,
+                        }}
+                        key={task.id}
+                        className={`task-node ${selected === task.id ? "selected" : ""} ${focusedNode === task.id ? "highlighted" : ""} ${relatedNodes.has(task.id) ? "related" : ""} ${focusedNode && focusedNode !== task.id && !relatedNodes.has(task.id) ? "muted" : ""}`}
+                        style={
+                          {
+                            left: pos.x,
+                            top: pos.y,
+                            width: Math.max(32, nodeDiameter(task.size)),
+                            height: Math.max(32, nodeDiameter(task.size)),
+                            "--node-size": `${nodeDiameter(task.size)}px`,
+                            "--label-width": `${Math.min(160, boardSize.width / 2 - 24)}px`,
+                            "--label-shift": `${clamp(pos.x % (boardSize.width / 2), Math.min(80, boardSize.width / 4 - 12) + 8, boardSize.width / 2 - Math.min(80, boardSize.width / 4 - 12) - 8) - (pos.x % (boardSize.width / 2))}px`,
+                          } as CSSProperties
+                        }
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`任务：${task.title || "新任务"}`}
+                        onPointerEnter={() => setHovered(task.id)}
+                        onPointerLeave={() => setHovered(null)}
+                        onFocus={() => setHovered(task.id)}
+                        onBlur={() => setHovered(null)}
+                        onPointerDown={(e) => startGesture(e, task)}
+                        onPointerMove={moveGesture}
+                        onPointerUp={endGesture}
+                        onPointerCancel={() => {
+                          gesture.current = null;
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            chooseTask(task.id);
+                          }
+                        }}
+                      >
+                        <span className="node-dot" />
+                        <span className="node-title">
+                          {task.title || "新任务"}
+                        </span>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+                <AnimatePresence initial={false}>
+                  {active && !active.done && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96, y: 5 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{
+                        opacity: 0,
+                        scale: 0.97,
+                        y: 3,
+                        pointerEvents: "none",
+                      }}
+                      transition={{ duration: 0.22, ease }}
+                      ref={popoverRef}
+                      className={`task-popover ${adjustingPriority ? "priority-preview" : ""}`}
+                      style={popoverStyle}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="popover-top">
+                        <span
+                          className={`pill ${quadrants[active.quadrant].color}`}
+                        >
+                          {quadrants[active.quadrant].subtitle}
+                        </span>
+                        <button
+                          className="icon-button"
+                          title="关闭详情"
+                          onClick={() => setSelected(null)}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <input
+                        className="task-title-input"
+                        aria-label="任务名称"
+                        value={active.title}
+                        onChange={(e) =>
+                          updateTask(active.id, { title: e.target.value })
+                        }
+                      />
+                      <textarea
+                        className="description-input"
+                        aria-label="任务说明"
+                        placeholder="任务说明"
+                        value={active.description}
+                        onChange={(e) =>
+                          updateTask(active.id, { description: e.target.value })
+                        }
+                      />
+                      <div className="detail-grid">
+                        <label>
+                          截止日期
+                          <input
+                            type="date"
+                            value={active.due}
+                            onChange={(e) =>
+                              updateTask(active.id, { due: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          所属项目
+                          <select
+                            aria-label="所属项目"
+                            value={active.project}
+                            onChange={(e) =>
+                              updateTask(active.id, { project: e.target.value })
+                            }
+                          >
+                            <option value="">未分类</option>
+                            {projects.map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className="field-label">
+                        任务象限
+                        <select
+                          value={active.quadrant}
+                          onChange={(e) =>
+                            updateTask(active.id, {
+                              quadrant: Number(e.target.value) as Quadrant,
+                            })
+                          }
+                        >
+                          {quadrants.map((q, i) => (
+                            <option key={i} value={i}>
+                              {q.title} · {q.subtitle}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="priority-control">
+                        象限内优先级{" "}
+                        <input
+                          aria-label="优先级大小"
+                          onPointerDown={() => setAdjustingPriority(true)}
+                          onPointerUp={() => setAdjustingPriority(false)}
+                          onPointerCancel={() => setAdjustingPriority(false)}
+                          onBlur={() => setAdjustingPriority(false)}
+                          onKeyDown={(e) => {
+                            if (
+                              [
+                                "ArrowLeft",
+                                "ArrowRight",
+                                "ArrowUp",
+                                "ArrowDown",
+                                "Home",
+                                "End",
+                                "PageUp",
+                                "PageDown",
+                              ].includes(e.key)
+                            )
+                              setAdjustingPriority(true);
+                          }}
+                          onKeyUp={() => setAdjustingPriority(false)}
+                          type="range"
+                          min="72"
+                          max="180"
+                          value={active.size}
+                          onChange={(e) =>
+                            updateTask(active.id, {
+                              size: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <button
+                        className="task-schedule-button"
+                        onClick={() => newEvent(defaultSchedule(), active)}
+                      >
+                        <CalendarDays size={15} />
+                        安排时间
+                      </button>
+                      <div className="task-schedule-list">
+                        {workspace.events
+                          .filter((e) => e.taskId === active.id)
+                          .sort((a, b) => a.start.localeCompare(b.start))
+                          .map((e) => (
+                            <button key={e.id} onClick={() => setEventDraft(e)}>
+                              {scheduleLabel(e)} · {e.title}
+                            </button>
+                          ))}
+                      </div>
+                      <TaskConnections
+                        key={active.id}
+                        task={active}
+                        workspace={workspace}
+                        onConnect={connect}
+                        onDisconnect={(a, b) =>
+                          setWorkspace((w) => disconnectTasks(w, a, b))
+                        }
+                        onNavigate={setSelected}
+                      />
+                      <button
+                        className="start-connection"
+                        onClick={() => {
+                          setConnectSource(active.id);
+                          setSelected(null);
+                        }}
+                      >
+                        <Link2 size={14} />
+                        在画布上连接
+                      </button>
+                      <FolderLinks
+                        paths={folderPaths(active)}
+                        inherited={
+                          workspace.projectFolders[active.project] ?? []
+                        }
+                        onChange={(folders) =>
+                          updateTask(active.id, { folder: "", folders })
+                        }
+                        onError={notify}
+                      />
+                      <div className="popover-footer">
+                        <button
+                          className="open-task-notes"
+                          onClick={() => setNotesTaskId(active.id)}
+                        >
+                          <NotebookPen size={16} /> 打开笔记
+                        </button>
+                        <button
+                          className="delete-task icon-button"
+                          title="删除任务"
+                          onClick={() => {
+                            setWorkspace((w) =>
+                              trashItem(w, "task", active.id),
+                            );
+                            setSelected(null);
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        <button
+                          className="complete-task"
+                          onClick={() => {
+                            updateTask(active.id, { done: true });
+                            setSelected(null);
+                            notify("已完成");
+                          }}
+                        >
+                          <Check size={16} /> 标记完成
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          ) : view === "outline" ? (
+            <Outline
+              tasks={visible}
+              project={projectLabel}
+              projects={projects}
+              onUpdate={updateTask}
+              onOpenNotes={setNotesTaskId}
+              onSchedule={(task) => newEvent(defaultSchedule(), task)}
+              onCreate={(quadrant) => {
+                const task = makeTask({
+                  title: "",
+                  quadrant,
+                  project: taskProject,
+                });
+                setWorkspace((w) => ({ ...w, tasks: [...w.tasks, task] }));
+                setQuery("");
+                return task.id;
+              }}
+              onDelete={(id) => setWorkspace((w) => trashItem(w, "task", id))}
+              projectFolders={workspace.projectFolders}
+              onError={notify}
+              onOpenFolder={(path) => void launchFolder(path)}
+            />
+          ) : (
+            <section className="completed-list">
+              {visible.length ? (
+                visible.map((task) => (
+                  <motion.article
+                    layout="position"
+                    {...fade}
+                    key={task.id}
+                    className={
+                      selected === task.id ? "search-selected-task" : ""
+                    }
+                  >
+                    <span className="completed-icon">
+                      <Check size={18} />
+                    </span>
+                    <div>
+                      <h3>{task.title}</h3>
+                      {selected === task.id && (
+                        <p className="completed-description">
+                          {task.description}
+                        </p>
+                      )}
+                      <p>
+                        {task.project || "未分类"}
+                        {task.due ? ` · ${task.due}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      className="icon-button"
+                      title="打开笔记"
+                      onClick={() => setNotesTaskId(task.id)}
+                    >
+                      <NotebookPen size={17} />
+                    </button>
+                    {task.folder && (
+                      <button
+                        className="icon-button"
+                        title="打开文件夹"
+                        onClick={() => void launchFolder(task.folder)}
+                      >
+                        <FolderOpen size={17} />
                       </button>
                     )}
                     <button
-                      title={`添加到${q.title}`}
-                      className="quadrant-add icon-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCapture({ quadrant: i as Quadrant });
-                      }}
+                      onClick={() => updateTask(task.id, { done: false })}
                     >
-                      <Plus size={16} />
+                      恢复任务
                     </button>
-                  </div>
-                </section>
-              ))}
-              <div
-                className="coordinate-axes"
-                aria-label="横轴：紧急性，向右增加；纵轴：重要性，向上增加"
-              >
-                <div className="x-axis">
-                  <span className="axis-label">紧急性</span>
-                </div>
-                <div className="y-axis">
-                  <span className="axis-label">重要性</span>
-                </div>
-              </div>
-              <TaskGraph
-                workspace={workspace}
-                visible={visible}
-                position={position}
-                width={boardSize.width}
-                height={boardSize.height}
-                selected={focusedNode}
-              />
-              {connectSource && (
-                <div className="connect-banner">
-                  <Link2 size={14} />
-                  选择同象限任务
-                  <button
-                    title="取消连线"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConnectSource(null);
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-              {visible.map((task) => {
-                const pos = position(task);
-                return (
-                  <div
-                    key={task.id}
-                    className={`task-node ${selected === task.id ? "selected" : ""} ${focusedNode === task.id ? "highlighted" : ""} ${relatedNodes.has(task.id) ? "related" : ""} ${focusedNode && focusedNode !== task.id && !relatedNodes.has(task.id) ? "muted" : ""}`}
-                    style={
-                      {
-                        left: pos.x,
-                        top: pos.y,
-                        width: Math.max(32, nodeDiameter(task.size)),
-                        height: Math.max(32, nodeDiameter(task.size)),
-                        "--node-size": `${nodeDiameter(task.size)}px`,
-                        "--label-width": `${Math.min(160, boardSize.width / 2 - 24)}px`,
-                        "--label-shift": `${clamp(pos.x % (boardSize.width / 2), Math.min(80, boardSize.width / 4 - 12) + 8, boardSize.width / 2 - Math.min(80, boardSize.width / 4 - 12) - 8) - (pos.x % (boardSize.width / 2))}px`,
-                      } as CSSProperties
-                    }
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`任务：${task.title || "新任务"}`}
-                    onPointerEnter={() => setHovered(task.id)}
-                    onPointerLeave={() => setHovered(null)}
-                    onFocus={() => setHovered(task.id)}
-                    onBlur={() => setHovered(null)}
-                    onPointerDown={(e) => startGesture(e, task)}
-                    onPointerMove={moveGesture}
-                    onPointerUp={endGesture}
-                    onPointerCancel={() => {
-                      gesture.current = null;
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        chooseTask(task.id);
-                      }
-                    }}
-                  >
-                    <span className="node-dot" />
-                    <span className="node-title">{task.title || "新任务"}</span>
-                  </div>
-                );
-              })}
-              {active && !active.done && (
-                <div
-                  ref={popoverRef}
-                  className={`task-popover ${adjustingPriority ? "priority-preview" : ""}`}
-                  style={popoverStyle}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="popover-top">
-                    <span
-                      className={`pill ${quadrants[active.quadrant].color}`}
-                    >
-                      {quadrants[active.quadrant].subtitle}
-                    </span>
                     <button
                       className="icon-button"
-                      title="关闭详情"
-                      onClick={() => setSelected(null)}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <input
-                    className="task-title-input"
-                    aria-label="任务名称"
-                    value={active.title}
-                    onChange={(e) =>
-                      updateTask(active.id, { title: e.target.value })
-                    }
-                  />
-                  <textarea
-                    className="description-input"
-                    aria-label="任务说明"
-                    placeholder="任务说明"
-                    value={active.description}
-                    onChange={(e) =>
-                      updateTask(active.id, { description: e.target.value })
-                    }
-                  />
-                  <div className="detail-grid">
-                    <label>
-                      截止日期
-                      <input
-                        type="date"
-                        value={active.due}
-                        onChange={(e) =>
-                          updateTask(active.id, { due: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      所属项目
-                      <select
-                        aria-label="所属项目"
-                        value={active.project}
-                        onChange={(e) =>
-                          updateTask(active.id, { project: e.target.value })
-                        }
-                      >
-                        <option value="">未分类</option>
-                        {projects.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <label className="field-label">
-                    任务象限
-                    <select
-                      value={active.quadrant}
-                      onChange={(e) =>
-                        updateTask(active.id, {
-                          quadrant: Number(e.target.value) as Quadrant,
-                        })
-                      }
-                    >
-                      {quadrants.map((q, i) => (
-                        <option key={i} value={i}>
-                          {q.title} · {q.subtitle}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="priority-control">
-                    象限内优先级{" "}
-                    <input
-                      aria-label="优先级大小"
-                      onPointerDown={() => setAdjustingPriority(true)}
-                      onPointerUp={() => setAdjustingPriority(false)}
-                      onPointerCancel={() => setAdjustingPriority(false)}
-                      onBlur={() => setAdjustingPriority(false)}
-                      onKeyDown={(e) => {
-                        if (
-                          [
-                            "ArrowLeft",
-                            "ArrowRight",
-                            "ArrowUp",
-                            "ArrowDown",
-                            "Home",
-                            "End",
-                            "PageUp",
-                            "PageDown",
-                          ].includes(e.key)
-                        )
-                          setAdjustingPriority(true);
-                      }}
-                      onKeyUp={() => setAdjustingPriority(false)}
-                      type="range"
-                      min="72"
-                      max="180"
-                      value={active.size}
-                      onChange={(e) =>
-                        updateTask(active.id, { size: Number(e.target.value) })
-                      }
-                    />
-                  </label>
-                  <button
-                    className="task-schedule-button"
-                    onClick={() => newEvent(defaultSchedule(), active)}
-                  >
-                    <CalendarDays size={15} />
-                    安排时间
-                  </button>
-                  <div className="task-schedule-list">
-                    {workspace.events
-                      .filter((e) => e.taskId === active.id)
-                      .sort((a, b) => a.start.localeCompare(b.start))
-                      .map((e) => (
-                        <button key={e.id} onClick={() => setEventDraft(e)}>
-                          {scheduleLabel(e)} · {e.title}
-                        </button>
-                      ))}
-                  </div>
-                  <TaskConnections
-                    key={active.id}
-                    task={active}
-                    workspace={workspace}
-                    onConnect={connect}
-                    onDisconnect={(a, b) =>
-                      setWorkspace((w) => disconnectTasks(w, a, b))
-                    }
-                    onNavigate={setSelected}
-                  />
-                  <button
-                    className="start-connection"
-                    onClick={() => {
-                      setConnectSource(active.id);
-                      setSelected(null);
-                    }}
-                  >
-                    <Link2 size={14} />
-                    在画布上连接
-                  </button>
-                  <FolderLinks
-                    paths={folderPaths(active)}
-                    inherited={workspace.projectFolders[active.project] ?? []}
-                    onChange={(folders) =>
-                      updateTask(active.id, { folder: "", folders })
-                    }
-                    onError={notify}
-                  />
-                  <div className="popover-footer">
-                    <button
-                      className="open-task-notes"
-                      onClick={() => setNotesTaskId(active.id)}
-                    >
-                      <NotebookPen size={16} /> 打开笔记
-                    </button>
-                    <button
-                      className="delete-task icon-button"
                       title="删除任务"
-                      onClick={() => {
-                        setWorkspace((w) => trashItem(w, "task", active.id));
-                        setSelected(null);
-                      }}
+                      onClick={() =>
+                        setWorkspace((w) => trashItem(w, "task", task.id))
+                      }
                     >
                       <Trash2 size={16} />
                     </button>
-                    <button
-                      className="complete-task"
-                      onClick={() => {
-                        updateTask(active.id, { done: true });
-                        setSelected(null);
-                        notify("已完成");
-                      }}
-                    >
-                      <Check size={16} /> 标记完成
-                    </button>
-                  </div>
+                  </motion.article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <CheckCheck size={36} />
+                  <h3>暂无已完成任务</h3>
                 </div>
               )}
-            </div>
-          </div>
-        ) : view === "outline" ? (
-          <Outline
-            tasks={visible}
-            project={projectLabel}
-            projects={projects}
-            onUpdate={updateTask}
-            onOpenNotes={setNotesTaskId}
-            onSchedule={(task) => newEvent(defaultSchedule(), task)}
-            onCreate={(quadrant) => {
-              const task = makeTask({
-                title: "",
-                quadrant,
-                project: taskProject,
-              });
-              setWorkspace((w) => ({ ...w, tasks: [...w.tasks, task] }));
-              setQuery("");
-              return task.id;
-            }}
-            onDelete={(id) => setWorkspace((w) => trashItem(w, "task", id))}
-            projectFolders={workspace.projectFolders}
-            onError={notify}
-            onOpenFolder={(path) => void launchFolder(path)}
-          />
-        ) : (
-          <section className="completed-list">
-            {visible.length ? (
-              visible.map((task) => (
-                <article
-                  key={task.id}
-                  className={selected === task.id ? "search-selected-task" : ""}
-                >
-                  <span className="completed-icon">
-                    <Check size={18} />
-                  </span>
-                  <div>
-                    <h3>{task.title}</h3>
-                    {selected === task.id && (
-                      <p className="completed-description">
-                        {task.description}
-                      </p>
-                    )}
-                    <p>
-                      {task.project || "未分类"}
-                      {task.due ? ` · ${task.due}` : ""}
-                    </p>
-                  </div>
-                  <button
-                    className="icon-button"
-                    title="打开笔记"
-                    onClick={() => setNotesTaskId(task.id)}
-                  >
-                    <NotebookPen size={17} />
-                  </button>
-                  {task.folder && (
-                    <button
-                      className="icon-button"
-                      title="打开文件夹"
-                      onClick={() => void launchFolder(task.folder)}
-                    >
-                      <FolderOpen size={17} />
-                    </button>
-                  )}
-                  <button onClick={() => updateTask(task.id, { done: false })}>
-                    恢复任务
-                  </button>
-                  <button
-                    className="icon-button"
-                    title="删除任务"
-                    onClick={() =>
-                      setWorkspace((w) => trashItem(w, "task", task.id))
-                    }
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </article>
-              ))
-            ) : (
-              <div className="empty-state">
-                <CheckCheck size={36} />
-                <h3>暂无已完成任务</h3>
-              </div>
-            )}
-          </section>
-        )}
+            </section>
+          )}
+        </div>
         {view !== "ideas" && (
           <footer className="composer-area">
             {captureResult && (
@@ -1826,223 +1874,244 @@ export default function App() {
           </footer>
         )}
       </main>
-      {notesTask && (
-        <Suspense fallback={null}>
-          <TaskNotes
-            key={notesTask.id}
-            task={notesTask}
-            onDelete={
-              workspace.ideas.some((i) => i.id === notesTaskId)
-                ? () => {
-                    setWorkspace((w) => trashItem(w, "idea", notesTaskId!));
-                    setNotesTaskId(null);
-                  }
-                : undefined
-            }
-            onUpdate={(id, change) => {
-              if (workspace.ideas.some((i) => i.id === id))
-                setWorkspace((w) => ({
-                  ...w,
-                  ideas: w.ideas.map((i) =>
-                    i.id === id
-                      ? {
-                          ...i,
-                          title: change.title ?? i.title,
-                          notes: change.notes ?? i.notes,
-                        }
-                      : i,
-                  ),
-                }));
-              else if (workspace.tasks.some((t) => t.id === id))
-                updateTask(id, change);
-              else
-                setWorkspace((w) => ({
-                  ...w,
-                  events: w.events.map((e) =>
-                    e.id === id ? { ...e, ...change } : e,
-                  ),
-                }));
+      <AnimatePresence initial={false}>
+        {notesTask && (
+          <Suspense fallback={null}>
+            <TaskNotes
+              key={notesTask.id}
+              task={notesTask}
+              onDelete={
+                workspace.ideas.some((i) => i.id === notesTaskId)
+                  ? () => {
+                      setWorkspace((w) => trashItem(w, "idea", notesTaskId!));
+                      setNotesTaskId(null);
+                    }
+                  : undefined
+              }
+              onUpdate={(id, change) => {
+                if (workspace.ideas.some((i) => i.id === id))
+                  setWorkspace((w) => ({
+                    ...w,
+                    ideas: w.ideas.map((i) =>
+                      i.id === id
+                        ? {
+                            ...i,
+                            title: change.title ?? i.title,
+                            notes: change.notes ?? i.notes,
+                          }
+                        : i,
+                    ),
+                  }));
+                else if (workspace.tasks.some((t) => t.id === id))
+                  updateTask(id, change);
+                else
+                  setWorkspace((w) => ({
+                    ...w,
+                    events: w.events.map((e) =>
+                      e.id === id ? { ...e, ...change } : e,
+                    ),
+                  }));
+              }}
+              onClose={() => setNotesTaskId(null)}
+              onError={notify}
+            />
+          </Suspense>
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {capture && (
+          <QuickCapture
+            quadrant={capture.quadrant}
+            idea={capture.idea}
+            onIdea={(title) => {
+              const idea = makeIdea(title);
+              setWorkspace((w) => ({ ...w, ideas: [...w.ideas, idea] }));
+              setCapture(null);
+              setView("ideas");
+              setProject("");
+              setQuery("");
+              setNotesTaskId(idea.id);
             }}
-            onClose={() => setNotesTaskId(null)}
+            project={taskProject}
+            projects={activeProjects}
+            onClose={() => setCapture(null)}
+            onEvent={() => {
+              setCapture(null);
+              newEvent(defaultSchedule());
+            }}
+            onTask={(value) => {
+              const ids = addTasks([value]);
+              setCapture(null);
+              setView("board");
+              setSelected(ids[0]);
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {eventDraft && (
+          <EventEditor
+            key={eventDraft.id}
+            event={eventDraft}
+            tasks={workspace.tasks}
+            projects={projects}
+            existing={workspace.events.some(
+              (e) => e.id === (eventDraft.seriesId || eventDraft.id),
+            )}
+            onClose={() => setEventDraft(null)}
+            onSave={saveEvent}
+            onDelete={(scope) => deleteEvent(eventDraft, scope)}
+            onNotes={(event) => {
+              setNotesTaskId(event.taskId || event.seriesId || event.id);
+              setEventDraft(null);
+            }}
+            projectFolders={workspace.projectFolders}
             onError={notify}
           />
-        </Suspense>
-      )}
-      {capture && (
-        <QuickCapture
-          quadrant={capture.quadrant}
-          idea={capture.idea}
-          onIdea={(title) => {
-            const idea = makeIdea(title);
-            setWorkspace((w) => ({ ...w, ideas: [...w.ideas, idea] }));
-            setCapture(null);
-            setView("ideas");
-            setProject("");
-            setQuery("");
-            setNotesTaskId(idea.id);
-          }}
-          project={taskProject}
-          projects={activeProjects}
-          onClose={() => setCapture(null)}
-          onEvent={() => {
-            setCapture(null);
-            newEvent(defaultSchedule());
-          }}
-          onTask={(value) => {
-            const ids = addTasks([value]);
-            setCapture(null);
-            setView("board");
-            setSelected(ids[0]);
-          }}
-        />
-      )}
-      {eventDraft && (
-        <EventEditor
-          key={eventDraft.id}
-          event={eventDraft}
-          tasks={workspace.tasks}
-          projects={projects}
-          existing={workspace.events.some(
-            (e) => e.id === (eventDraft.seriesId || eventDraft.id),
-          )}
-          onClose={() => setEventDraft(null)}
-          onSave={saveEvent}
-          onDelete={(scope) => deleteEvent(eventDraft, scope)}
-          onNotes={(event) => {
-            setNotesTaskId(event.taskId || event.seriesId || event.id);
-            setEventDraft(null);
-          }}
-          projectFolders={workspace.projectFolders}
-          onError={notify}
-        />
-      )}
-      {notice && (
-        <div className="toast" role="status">
-          <span>{notice}</span>
-          <button className="icon-button" onClick={() => setNotice("")}>
-            <X size={14} />
-          </button>
-        </div>
-      )}
-      {globalSearch && (
-        <GlobalSearch
-          workspace={workspace}
-          onIdea={(idea) => {
-            setGlobalSearch(false);
-            setView("ideas");
-            setProject("");
-            setQuery("");
-            setNotesTaskId(idea.id);
-          }}
-          onClose={() => setGlobalSearch(false)}
-          onEvent={(event) => {
-            setGlobalSearch(false);
-            setProject("");
-            setQuery("");
-            setView("calendar");
-            setCalendarDay(event.start.slice(0, 10));
-            setCalendarMode("day");
-            setEventDraft(event);
-          }}
-          onTask={(task) => {
-            setGlobalSearch(false);
-            setProject(
-              workspace.archivedProjects.includes(task.project)
-                ? task.project
-                : "",
-            );
-            setQuery(task.done ? task.title : "");
-            setView(task.done ? "done" : "board");
-            setSelected(task.id);
-          }}
-          onProject={(name) => {
-            setGlobalSearch(false);
-            setProject(name);
-            setQuery("");
-            setView("board");
-            setSelected(null);
-          }}
-        />
-      )}
-      {projectEditor !== null && (
-        <ProjectEditor
-          original={projectEditor}
-          names={projects}
-          onClose={() => setProjectEditor(null)}
-          folders={workspace.projectFolders[projectEditor] ?? []}
-          onFolders={(folders) =>
-            setWorkspace((w) => ({
-              ...w,
-              projectFolders: { ...w.projectFolders, [projectEditor]: folders },
-            }))
-          }
-          onError={notify}
-          onArchive={() => {
-            setWorkspace((w) => ({
-              ...w,
-              archivedProjects: [
-                ...new Set([...w.archivedProjects, projectEditor]),
-              ],
-            }));
-            setProjectEditor(null);
-            setProject("");
-          }}
-          onSave={async (name) => {
-            let next = projectEditor
-              ? renameProject(workspaceRef.current, projectEditor, name)
-              : {
-                  ...workspaceRef.current,
-                  projects: [...projectNames(workspaceRef.current), name],
-                };
-            next = await ensureProjectFolders(next);
-            setWorkspace(next);
-            if (project === projectEditor && projectEditor) setProject(name);
-            setProjectEditor(null);
-          }}
-          onDelete={(contents) => {
-            setWorkspace((w) =>
-              trashItem(w, "project", projectEditor, contents),
-            );
-            if (project === projectEditor) setProject("");
-            setProjectEditor(null);
-            notify("项目已移入回收站，本地文件保持原位");
-          }}
-        />
-      )}
-      {workSettings && (
-        <WorkspaceSettings
-          workspace={workspace}
-          device={device}
-          onDevice={updateDevice}
-          onWorkspace={setWorkspace}
-          onClose={() => setWorkSettings(false)}
-          onError={notify}
-          onSync={() => void startSync()}
-          syncStatus={syncStatus}
-          onRoot={setRoot}
-          onTaskFolders={() => provisionTasks()}
-        />
-      )}
-      {syncPlan && (
-        <SyncReview
-          key={JSON.stringify(syncPlan.local)}
-          plan={syncPlan}
-          busy={syncBusy}
-          onClose={() => setSyncPlan(null)}
-          onConfirm={(choices) => void finishSync(syncPlan, choices)}
-        />
-      )}
-      {settings && (
-        <Settings
-          config={workspace.config}
-          onClose={() => setSettings(false)}
-          onSave={(config) => {
-            setWorkspace((w) => ({ ...w, config }));
-            setSettings(false);
-            notify("模型配置已保存");
-          }}
-        />
-      )}
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {notice && (
+          <motion.div {...fade} className="toast" role="status">
+            <span>{notice}</span>
+            <button className="icon-button" onClick={() => setNotice("")}>
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {globalSearch && (
+          <GlobalSearch
+            workspace={workspace}
+            onIdea={(idea) => {
+              setGlobalSearch(false);
+              setView("ideas");
+              setProject("");
+              setQuery("");
+              setNotesTaskId(idea.id);
+            }}
+            onClose={() => setGlobalSearch(false)}
+            onEvent={(event) => {
+              setGlobalSearch(false);
+              setProject("");
+              setQuery("");
+              setView("calendar");
+              setCalendarDay(event.start.slice(0, 10));
+              setCalendarMode("day");
+              setEventDraft(event);
+            }}
+            onTask={(task) => {
+              setGlobalSearch(false);
+              setProject(
+                workspace.archivedProjects.includes(task.project)
+                  ? task.project
+                  : "",
+              );
+              setQuery(task.done ? task.title : "");
+              setView(task.done ? "done" : "board");
+              setSelected(task.id);
+            }}
+            onProject={(name) => {
+              setGlobalSearch(false);
+              setProject(name);
+              setQuery("");
+              setView("board");
+              setSelected(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {projectEditor !== null && (
+          <ProjectEditor
+            original={projectEditor}
+            names={projects}
+            onClose={() => setProjectEditor(null)}
+            folders={workspace.projectFolders[projectEditor] ?? []}
+            onFolders={(folders) =>
+              setWorkspace((w) => ({
+                ...w,
+                projectFolders: {
+                  ...w.projectFolders,
+                  [projectEditor]: folders,
+                },
+              }))
+            }
+            onError={notify}
+            onArchive={() => {
+              setWorkspace((w) => ({
+                ...w,
+                archivedProjects: [
+                  ...new Set([...w.archivedProjects, projectEditor]),
+                ],
+              }));
+              setProjectEditor(null);
+              setProject("");
+            }}
+            onSave={async (name) => {
+              let next = projectEditor
+                ? renameProject(workspaceRef.current, projectEditor, name)
+                : {
+                    ...workspaceRef.current,
+                    projects: [...projectNames(workspaceRef.current), name],
+                  };
+              next = await ensureProjectFolders(next);
+              setWorkspace(next);
+              if (project === projectEditor && projectEditor) setProject(name);
+              setProjectEditor(null);
+            }}
+            onDelete={(contents) => {
+              setWorkspace((w) =>
+                trashItem(w, "project", projectEditor, contents),
+              );
+              if (project === projectEditor) setProject("");
+              setProjectEditor(null);
+              notify("项目已移入回收站，本地文件保持原位");
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {workSettings && (
+          <WorkspaceSettings
+            workspace={workspace}
+            device={device}
+            onDevice={updateDevice}
+            onWorkspace={setWorkspace}
+            onClose={() => setWorkSettings(false)}
+            onError={notify}
+            onSync={() => void startSync()}
+            syncStatus={syncStatus}
+            onRoot={setRoot}
+            onTaskFolders={() => provisionTasks()}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {syncPlan && (
+          <SyncReview
+            key={JSON.stringify(syncPlan.local)}
+            plan={syncPlan}
+            busy={syncBusy}
+            onClose={() => setSyncPlan(null)}
+            onConfirm={(choices) => void finishSync(syncPlan, choices)}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {settings && (
+          <Settings
+            config={workspace.config}
+            onClose={() => setSettings(false)}
+            onSave={(config) => {
+              setWorkspace((w) => ({ ...w, config }));
+              setSettings(false);
+              notify("模型配置已保存");
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -2071,7 +2140,7 @@ function Settings({
     }
   }
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <section className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">
           <div className="settings-icon">
@@ -2147,6 +2216,6 @@ function Settings({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

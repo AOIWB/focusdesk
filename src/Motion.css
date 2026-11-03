@@ -1,0 +1,206 @@
+:root {
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sidebar-width: 242px;
+}
+@media (min-width: 1600px) {
+  :root {
+    --sidebar-width: 264px;
+  }
+}
+@media (max-width: 1100px) {
+  :root {
+    --sidebar-width: 205px;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --sidebar-width: 175px;
+  }
+}
+.sidebar-shell {
+  flex-shrink: 0;
+  overflow: hidden;
+  height: 100%;
+}
+.sidebar-shell .sidebar {
+  width: var(--sidebar-width);
+  height: 100%;
+  transition: opacity 180ms var(--motion-ease);
+}
+.collapsed .sidebar {
+  opacity: 0;
+  pointer-events: none;
+}
+.workspace-surface,
+.calendar-surface,
+.notes-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+button,
+input,
+select,
+textarea,
+.search {
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 180ms ease;
+}
+.icon-button {
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms var(--motion-ease);
+}
+.icon-button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.primary-button,
+.secondary-button,
+.new-task,
+.send-button {
+  transition:
+    background-color 140ms ease,
+    transform 140ms var(--motion-ease),
+    box-shadow 180ms ease;
+}
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.new-task:active,
+.send-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.modal-backdrop > *,
+.task-notes-backdrop > * {
+  animation: dialog-arrive 240ms var(--motion-ease) both;
+}
+[data-exiting="true"] > * {
+  animation: dialog-leave 180ms var(--motion-ease) both;
+}
+.task-popover {
+  animation: none;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+.task-popover > :not(.priority-control) {
+  transition:
+    opacity 160ms ease,
+    visibility 160ms;
+}
+.task-popover.priority-preview > :not(.priority-control) {
+  opacity: 0;
+}
+.node-dot {
+  animation: node-arrive 300ms var(--motion-ease);
+  transition:
+    width 180ms var(--motion-ease),
+    height 180ms var(--motion-ease),
+    background 160ms ease,
+    box-shadow 180ms ease;
+}
+.node-title {
+  transition:
+    color 160ms ease,
+    top 180ms var(--motion-ease);
+}
+.graph-edge {
+  transition:
+    stroke 180ms ease,
+    opacity 180ms ease;
+}
+.outline-task-toggle svg,
+.outline-group-heading svg,
+.notes-fold svg {
+  transition: transform 200ms var(--motion-ease);
+}
+.idea-star > svg {
+  animation: star-arrive 420ms var(--motion-ease);
+  transition:
+    filter 220ms ease,
+    transform 220ms var(--motion-ease);
+  overflow: visible;
+}
+.idea-star.active > svg {
+  filter: drop-shadow(0 0 5px #8cadd080);
+  transform: scale(1.13);
+}
+.idea-star > time {
+  transition: opacity 180ms ease;
+}
+.idea-star,
+.mindmap-node {
+  transition: color 180ms ease;
+}
+.ideas-canvas line {
+  transition: stroke 180ms ease;
+}
+.notes-palette,
+.capture-result,
+.connect-banner {
+  animation: soft-arrive 180ms var(--motion-ease);
+}
+@keyframes dialog-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dialog-leave {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+@keyframes node-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes star-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+    filter: drop-shadow(0 0 9px #8cadd0aa);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes soft-arrive {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

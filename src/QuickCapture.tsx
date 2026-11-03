@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { useState } from "react";
 import { X, ListTree, CalendarDays } from "lucide-react";
 import { outlineGroups, taskTitle, type Quadrant, type Task } from "./model";
@@ -28,7 +29,7 @@ export default function QuickCapture({
   const [group, setGroup] = useState<Quadrant>(quadrant ?? 1);
   const [owner, setOwner] = useState(project);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <form
         className="modal quick-capture"
         role="dialog"
@@ -176,6 +177,6 @@ export default function QuickCapture({
           </>
         )}
       </form>
-    </div>
+    </Overlay>
   );
 }

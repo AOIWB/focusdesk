@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { notesText } from "./notes";
 import { useState } from "react";
 import {
@@ -80,7 +81,7 @@ export default function GlobalSearch({
     return `${start ? "…" : ""}${text.slice(start, start + 150)}`;
   }
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <section
         className="global-search-modal"
         role="dialog"
@@ -205,6 +206,6 @@ export default function GlobalSearch({
           )}
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

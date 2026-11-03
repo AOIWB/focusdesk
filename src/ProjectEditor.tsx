@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { useState } from "react";
 import FolderLinks from "./FolderLinks";
 import { Archive, Trash2, X } from "lucide-react";
@@ -46,7 +47,7 @@ export default function ProjectEditor({
     }
   }
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <form
         className="modal project-editor"
         onClick={(e) => e.stopPropagation()}
@@ -123,6 +124,6 @@ export default function ProjectEditor({
           </button>
         </div>
       </form>
-    </div>
+    </Overlay>
   );
 }

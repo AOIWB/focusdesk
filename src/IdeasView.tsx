@@ -1,3 +1,5 @@
+import { AnimatePresence, motion } from "motion/react";
+import { ease } from "./Motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, Scan, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Idea } from "./model";
@@ -188,7 +190,17 @@ export default function IdeasView({
               const a = nodes.find((n) => n.id === e.source)!,
                 b = nodes.find((n) => n.id === e.target)!;
               return (
-                <line
+                <motion.line
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{
+                    pathLength: 1,
+                    opacity: 1,
+                    x1: a.px,
+                    y1: a.py,
+                    x2: b.px,
+                    y2: b.py,
+                  }}
+                  transition={{ duration: 0.32, ease }}
                   key={e.target}
                   x1={a.px}
                   y1={a.py}
@@ -202,45 +214,50 @@ export default function IdeasView({
                 />
               );
             })}
-            {nodes.map((n, i) => (
-              <g
-                key={n.id}
-                data-idea="true"
-                transform={`translate(${n.px},${n.py})`}
-              >
-                <foreignObject x="-100" y="-20" width="200" height="100">
-                  <button
-                    className={`idea-star ${hover === n.id ? "active" : ""}`}
-                    aria-label={`灵感：${n.title}`}
-                    onMouseEnter={() => setHover(n.id)}
-                    onMouseLeave={() => setHover(null)}
-                    onFocus={() => setHover(n.id)}
-                    onBlur={() => setHover(null)}
-                    onClick={() => onOpen(n)}
-                  >
-                    <svg
-                      width="28"
-                      height="28"
-                      viewBox="-14 -14 28 28"
-                      aria-hidden="true"
+            <AnimatePresence initial={false}>
+              {nodes.map((n, i) => (
+                <motion.g
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, x: n.px, y: n.py }}
+                  exit={{ opacity: 0, pointerEvents: "none" }}
+                  transition={{ duration: 0.28, ease }}
+                  key={n.id}
+                  data-idea="true"
+                >
+                  <foreignObject x="-100" y="-20" width="200" height="100">
+                    <button
+                      className={`idea-star ${hover === n.id ? "active" : ""}`}
+                      aria-label={`灵感：${n.title}`}
+                      onMouseEnter={() => setHover(n.id)}
+                      onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover(n.id)}
+                      onBlur={() => setHover(null)}
+                      onClick={() => onOpen(n)}
                     >
-                      <path
-                        d="M0,-10 Q2,-2 10,0 Q2,2 0,10 Q-2,2 -10,0 Q-2,-2 0,-10Z"
-                        fill={i === nodes.length - 1 ? "#8c9caf" : "#9099a6"}
-                      />
-                      <circle r="2.5" fill="#687586" />
-                    </svg>
-                    <span>{n.title}</span>
-                    <time>
-                      {new Date(n.createdAt).toLocaleDateString("zh-CN", {
-                        month: "2-digit",
-                        day: "2-digit",
-                      })}
-                    </time>
-                  </button>
-                </foreignObject>
-              </g>
-            ))}
+                      <svg
+                        width="28"
+                        height="28"
+                        viewBox="-14 -14 28 28"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M0,-10 Q2,-2 10,0 Q2,2 0,10 Q-2,2 -10,0 Q-2,-2 0,-10Z"
+                          fill={i === nodes.length - 1 ? "#8c9caf" : "#9099a6"}
+                        />
+                        <circle r="2.5" fill="#687586" />
+                      </svg>
+                      <span>{n.title}</span>
+                      <time>
+                        {new Date(n.createdAt).toLocaleDateString("zh-CN", {
+                          month: "2-digit",
+                          day: "2-digit",
+                        })}
+                      </time>
+                    </button>
+                  </foreignObject>
+                </motion.g>
+              ))}
+            </AnimatePresence>
           </g>
         </svg>
         <div className="ideas-zoom">

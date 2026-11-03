@@ -1,3 +1,4 @@
+import { useSurfaceMotion } from "./Motion";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Plus, Link2 } from "lucide-react";
 import type { CalendarEvent, Task } from "./model";
@@ -42,6 +43,13 @@ export default function Calendar({
   onOpen: (event: CalendarEvent) => void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
+  const previousDay = useRef(day);
+  const direction =
+    day === previousDay.current ? 0 : day > previousDay.current ? 1 : -1;
+  const surface = useSurfaceMotion(mode + day, direction);
+  useEffect(() => {
+    previousDay.current = day;
+  }, [day]);
   const today = dateKey(new Date());
   const days = mode === "day" ? [day] : weekDays(day);
   const range =
@@ -209,238 +217,242 @@ export default function Calendar({
           </button>
         </div>
       </div>
-      {mode === "day" || mode === "week" ? (
-        <>
-          <div
-            className="calendar-day-head"
-            style={{
-              gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))`,
-            }}
-          >
-            <span />
-            {days.map((d) => (
-              <button
-                key={d}
-                className={d === today ? "is-today" : ""}
-                onClick={() => openDay(d)}
-              >
-                周{weekdays[(dateFromKey(d).getDay() + 6) % 7]}{" "}
-                <strong>{Number(d.slice(8))}</strong>
-              </button>
-            ))}
-          </div>
-          {days.some((d) => dueOn(d).length > 0) && (
+      <div className="calendar-surface" ref={surface}>
+        {mode === "day" || mode === "week" ? (
+          <>
             <div
-              className="calendar-deadlines"
-              style={{
-                gridTemplateColumns: `48px repeat(${days.length}, minmax(0,1fr))`,
-              }}
-            >
-              <span>截止</span>
-              {days.map((d) => (
-                <div key={d}>{dueOn(d).map(deadlineButton)}</div>
-              ))}
-            </div>
-          )}
-          <div className="calendar-time-scroll" ref={scroll}>
-            <div
-              className="calendar-time-grid"
+              className="calendar-day-head"
               style={{
                 gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))`,
               }}
             >
-              <div className="calendar-hours">
-                {Array.from({ length: 24 }, (_, h) => (
-                  <span key={h} style={{ top: h * 60 }}>
-                    {String(h).padStart(2, "0")}:00
-                  </span>
-                ))}
-              </div>
+              <span />
               {days.map((d) => (
-                <div
+                <button
                   key={d}
-                  className="calendar-day-column"
-                  aria-label={`${d} 时间线`}
+                  className={d === today ? "is-today" : ""}
+                  onClick={() => openDay(d)}
                 >
-                  {Array.from({ length: 24 }, (_, hour) => (
-                    <div
-                      key={hour}
-                      className="calendar-hour-slot"
-                      title={`${d} ${hour}:00 新建日程`}
-                      onClick={() => onCreate(defaultSchedule(d, hour))}
-                    />
-                  ))}
-                  {layoutDayEvents(events, d).map(
-                    ({ event, start, end, column, columns }) => (
-                      <button
-                        key={event.id}
-                        className={`calendar-event ${event.taskId ? "linked" : ""} ${preview?.id === event.id ? "is-dragging" : ""}`}
-                        aria-label={`${event.title} ${scheduleLabel(event)}`}
-                        title={`${event.title}\n${scheduleLabel(event)}`}
-                        onClick={() => {
-                          if (suppressClick.current) {
-                            suppressClick.current = false;
-                            return;
-                          }
-                          onOpen(event);
-                        }}
-                        onPointerDown={(e) => begin(e, event)}
-                        onPointerMove={move}
-                        onPointerUp={finish}
-                        onPointerCancel={() => {
-                          drag.current = null;
-                          setPreview(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (
-                            e.altKey &&
-                            ["ArrowUp", "ArrowDown"].includes(e.key)
-                          ) {
-                            e.preventDefault();
-                            onReschedule(
-                              shiftedEvent(
-                                event,
-                                e.key === "ArrowUp" ? -15 : 15,
-                                0,
-                                "move",
-                              ),
-                            );
-                          }
-                        }}
-                        style={{
-                          top: start,
-                          transform:
-                            preview?.id === event.id
-                              ? `translate(${dragStyle.x}px,${dragStyle.y}px)`
-                              : undefined,
-                          height: Math.max(
-                            18,
-                            end -
-                              start -
-                              2 +
-                              (preview?.id === event.id ? dragStyle.height : 0),
-                          ),
-                          left: `calc(${(column / columns) * 100}% + 3px)`,
-                          width: `calc(${100 / columns}% - 6px)`,
-                        }}
-                      >
-                        <i className="event-resize start" />
-                        <i className="event-resize end" />
-                        <strong>
-                          {event.taskId && <Link2 size={11} />} {event.title}
-                        </strong>
-                        {end - start >= 35 && (
-                          <span>
-                            {event.start.slice(11)}–{event.end.slice(11)}
-                          </span>
-                        )}
-                      </button>
-                    ),
-                  )}
-                </div>
+                  周{weekdays[(dateFromKey(d).getDay() + 6) % 7]}{" "}
+                  <strong>{Number(d.slice(8))}</strong>
+                </button>
               ))}
             </div>
-          </div>
-        </>
-      ) : mode === "month" ? (
-        <div className="calendar-month-scroll">
-          <div className="calendar-weekdays">
-            {weekdays.map((d) => (
-              <span key={d}>周{d}</span>
-            ))}
-          </div>
-          <div className="calendar-month-grid">
-            {monthDays(day).map((d) => {
-              const list = events
-                .filter((e) => scheduledOn(e, d))
-                .sort((a, b) => a.start.localeCompare(b.start));
-              return (
-                <div
-                  key={d}
-                  className={`calendar-month-cell ${d.slice(0, 7) !== day.slice(0, 7) ? "outside" : ""}`}
-                >
-                  <button
-                    className={`calendar-day-number ${d === today ? "is-today" : ""}`}
-                    aria-label={`查看 ${d}`}
-                    onClick={() => openDay(d)}
+            {days.some((d) => dueOn(d).length > 0) && (
+              <div
+                className="calendar-deadlines"
+                style={{
+                  gridTemplateColumns: `48px repeat(${days.length}, minmax(0,1fr))`,
+                }}
+              >
+                <span>截止</span>
+                {days.map((d) => (
+                  <div key={d}>{dueOn(d).map(deadlineButton)}</div>
+                ))}
+              </div>
+            )}
+            <div className="calendar-time-scroll" ref={scroll}>
+              <div
+                className="calendar-time-grid"
+                style={{
+                  gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))`,
+                }}
+              >
+                <div className="calendar-hours">
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <span key={h} style={{ top: h * 60 }}>
+                      {String(h).padStart(2, "0")}:00
+                    </span>
+                  ))}
+                </div>
+                {days.map((d) => (
+                  <div
+                    key={d}
+                    className="calendar-day-column"
+                    aria-label={`${d} 时间线`}
                   >
-                    {Number(d.slice(8))}
-                  </button>
-                  {dueOn(d).slice(0, 3).map(deadlineButton)}
-                  {list
-                    .slice(0, Math.max(0, 3 - Math.min(3, dueOn(d).length)))
-                    .map((e) => (
-                      <button
-                        key={e.id}
-                        className="calendar-month-event"
-                        title={`${e.title} ${scheduleLabel(e)}`}
-                        onClick={() => onOpen(e)}
-                      >
-                        <time>
-                          {e.start.slice(0, 10) < d
-                            ? "跨日"
-                            : e.start.slice(11)}
-                        </time>
-                        {e.title}
-                      </button>
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <div
+                        key={hour}
+                        className="calendar-hour-slot"
+                        title={`${d} ${hour}:00 新建日程`}
+                        onClick={() => onCreate(defaultSchedule(d, hour))}
+                      />
                     ))}
-                  {list.length + dueOn(d).length > 3 && (
+                    {layoutDayEvents(events, d).map(
+                      ({ event, start, end, column, columns }) => (
+                        <button
+                          key={event.id}
+                          className={`calendar-event ${event.taskId ? "linked" : ""} ${preview?.id === event.id ? "is-dragging" : ""}`}
+                          aria-label={`${event.title} ${scheduleLabel(event)}`}
+                          title={`${event.title}\n${scheduleLabel(event)}`}
+                          onClick={() => {
+                            if (suppressClick.current) {
+                              suppressClick.current = false;
+                              return;
+                            }
+                            onOpen(event);
+                          }}
+                          onPointerDown={(e) => begin(e, event)}
+                          onPointerMove={move}
+                          onPointerUp={finish}
+                          onPointerCancel={() => {
+                            drag.current = null;
+                            setPreview(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (
+                              e.altKey &&
+                              ["ArrowUp", "ArrowDown"].includes(e.key)
+                            ) {
+                              e.preventDefault();
+                              onReschedule(
+                                shiftedEvent(
+                                  event,
+                                  e.key === "ArrowUp" ? -15 : 15,
+                                  0,
+                                  "move",
+                                ),
+                              );
+                            }
+                          }}
+                          style={{
+                            top: start,
+                            transform:
+                              preview?.id === event.id
+                                ? `translate(${dragStyle.x}px,${dragStyle.y}px)`
+                                : undefined,
+                            height: Math.max(
+                              18,
+                              end -
+                                start -
+                                2 +
+                                (preview?.id === event.id
+                                  ? dragStyle.height
+                                  : 0),
+                            ),
+                            left: `calc(${(column / columns) * 100}% + 3px)`,
+                            width: `calc(${100 / columns}% - 6px)`,
+                          }}
+                        >
+                          <i className="event-resize start" />
+                          <i className="event-resize end" />
+                          <strong>
+                            {event.taskId && <Link2 size={11} />} {event.title}
+                          </strong>
+                          {end - start >= 35 && (
+                            <span>
+                              {event.start.slice(11)}–{event.end.slice(11)}
+                            </span>
+                          )}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : mode === "month" ? (
+          <div className="calendar-month-scroll">
+            <div className="calendar-weekdays">
+              {weekdays.map((d) => (
+                <span key={d}>周{d}</span>
+              ))}
+            </div>
+            <div className="calendar-month-grid">
+              {monthDays(day).map((d) => {
+                const list = events
+                  .filter((e) => scheduledOn(e, d))
+                  .sort((a, b) => a.start.localeCompare(b.start));
+                return (
+                  <div
+                    key={d}
+                    className={`calendar-month-cell ${d.slice(0, 7) !== day.slice(0, 7) ? "outside" : ""}`}
+                  >
                     <button
-                      className="calendar-more"
+                      className={`calendar-day-number ${d === today ? "is-today" : ""}`}
+                      aria-label={`查看 ${d}`}
                       onClick={() => openDay(d)}
                     >
-                      +{list.length + dueOn(d).length - 3} 项
+                      {Number(d.slice(8))}
                     </button>
-                  )}
-                </div>
+                    {dueOn(d).slice(0, 3).map(deadlineButton)}
+                    {list
+                      .slice(0, Math.max(0, 3 - Math.min(3, dueOn(d).length)))
+                      .map((e) => (
+                        <button
+                          key={e.id}
+                          className="calendar-month-event"
+                          title={`${e.title} ${scheduleLabel(e)}`}
+                          onClick={() => onOpen(e)}
+                        >
+                          <time>
+                            {e.start.slice(0, 10) < d
+                              ? "跨日"
+                              : e.start.slice(11)}
+                          </time>
+                          {e.title}
+                        </button>
+                      ))}
+                    {list.length + dueOn(d).length > 3 && (
+                      <button
+                        className="calendar-more"
+                        onClick={() => openDay(d)}
+                      >
+                        +{list.length + dueOn(d).length - 3} 项
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="calendar-year-grid">
+            {Array.from({ length: 12 }, (_, i) => {
+              const month = `${day.slice(0, 4)}-${String(i + 1).padStart(2, "0")}`;
+              return (
+                <section className="calendar-mini-month" key={month}>
+                  <button
+                    className="calendar-month-title"
+                    onClick={() => {
+                      onDay(`${month}-01`);
+                      onMode("month");
+                    }}
+                  >
+                    {i + 1}月
+                  </button>
+                  <div className="calendar-mini-grid">
+                    {weekdays.map((d) => (
+                      <span key={d}>{d}</span>
+                    ))}
+                    {monthDays(`${month}-01`).map((d) => {
+                      const count =
+                        d.slice(0, 7) === month
+                          ? events.filter((e) => scheduledOn(e, d)).length
+                          : 0;
+                      const deadlinesCount =
+                        d.slice(0, 7) === month ? dueOn(d).length : 0;
+                      return (
+                        <button
+                          key={d}
+                          disabled={d.slice(0, 7) !== month}
+                          aria-label={`${d}，${count} 项日程，${deadlinesCount} 项截止任务`}
+                          className={`${d === today ? "is-today" : ""} ${count ? "has-events" : ""} ${deadlinesCount ? "has-deadlines" : ""}`}
+                          onClick={() => openDay(d)}
+                        >
+                          {d.slice(0, 7) === month ? Number(d.slice(8)) : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
               );
             })}
           </div>
-        </div>
-      ) : (
-        <div className="calendar-year-grid">
-          {Array.from({ length: 12 }, (_, i) => {
-            const month = `${day.slice(0, 4)}-${String(i + 1).padStart(2, "0")}`;
-            return (
-              <section className="calendar-mini-month" key={month}>
-                <button
-                  className="calendar-month-title"
-                  onClick={() => {
-                    onDay(`${month}-01`);
-                    onMode("month");
-                  }}
-                >
-                  {i + 1}月
-                </button>
-                <div className="calendar-mini-grid">
-                  {weekdays.map((d) => (
-                    <span key={d}>{d}</span>
-                  ))}
-                  {monthDays(`${month}-01`).map((d) => {
-                    const count =
-                      d.slice(0, 7) === month
-                        ? events.filter((e) => scheduledOn(e, d)).length
-                        : 0;
-                    const deadlinesCount =
-                      d.slice(0, 7) === month ? dueOn(d).length : 0;
-                    return (
-                      <button
-                        key={d}
-                        disabled={d.slice(0, 7) !== month}
-                        aria-label={`${d}，${count} 项日程，${deadlinesCount} 项截止任务`}
-                        className={`${d === today ? "is-today" : ""} ${count ? "has-events" : ""} ${deadlinesCount ? "has-deadlines" : ""}`}
-                        onClick={() => openDay(d)}
-                      >
-                        {d.slice(0, 7) === month ? Number(d.slice(8)) : ""}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

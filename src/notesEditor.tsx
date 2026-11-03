@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from "react";
+import { useReducedMotion } from "motion/react";
 import {
   NodeViewContent,
   NodeViewWrapper,
@@ -20,12 +22,51 @@ function OutlineItem({
   editor,
   getPos,
 }: NodeViewProps) {
+  const host = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+  const previous = useRef(Boolean(node.attrs.collapsed));
+  const heights = useRef<number[]>([]);
+  const childLists = () =>
+    host.current?.querySelectorAll<HTMLElement>(
+      ":scope > .notes-item-content > [data-node-view-content-react] > ul, :scope > .notes-item-content > [data-node-view-content-react] > ol",
+    );
+  useLayoutEffect(() => {
+    const collapsed = Boolean(node.attrs.collapsed);
+    if (previous.current !== collapsed && !reduced) {
+      childLists()?.forEach((list, i) => {
+        list.getAnimations?.().forEach((animation) => animation.cancel());
+        const height = collapsed
+          ? (heights.current[i] ?? 0)
+          : list.scrollHeight;
+        const animation = list.animate?.(
+          [
+            {
+              display: "block",
+              height: `${collapsed ? height : 0}px`,
+              opacity: collapsed ? 1 : 0,
+              overflow: "hidden",
+            },
+            {
+              display: "block",
+              height: `${collapsed ? 0 : height}px`,
+              opacity: collapsed ? 0 : 1,
+              overflow: "hidden",
+            },
+          ],
+          { duration: 220, easing: "cubic-bezier(.22,1,.36,1)" },
+        );
+        void animation?.finished.catch(() => {});
+      });
+    }
+    previous.current = collapsed;
+  }, [node.attrs.collapsed, reduced]);
   const hasChildren = node.content.content.some(
     (child) =>
       child.type.name === "bulletList" || child.type.name === "orderedList",
   );
   return (
     <NodeViewWrapper
+      ref={host}
       as="div"
       className={`notes-item ${node.attrs.collapsed ? "is-collapsed" : ""}`}
     >
@@ -38,6 +79,9 @@ function OutlineItem({
             aria-expanded={!node.attrs.collapsed}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
+              heights.current = Array.from(childLists() ?? []).map(
+                (list) => list.getBoundingClientRect().height,
+              );
               const position = getPos();
               if (!node.attrs.collapsed && position !== undefined)
                 editor.commands.setTextSelection(

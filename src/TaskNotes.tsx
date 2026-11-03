@@ -1,3 +1,5 @@
+import { useSurfaceMotion } from "./Motion";
+import { Overlay } from "./Motion";
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import {
@@ -63,6 +65,7 @@ export default function TaskNotes({
   onDelete?: () => void;
 }) {
   const [view, setView] = useState<"notes" | "map">("notes");
+  const surface = useSurfaceMotion(view);
   const fileInput = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const updateRef = useRef(onUpdate);
@@ -134,7 +137,7 @@ export default function TaskNotes({
   }
 
   return (
-    <div className="task-notes-backdrop" onClick={onClose}>
+    <Overlay className="task-notes-backdrop" onClick={onClose}>
       <section
         ref={dialogRef}
         className="task-notes-dialog"
@@ -411,50 +414,52 @@ export default function TaskNotes({
             </div>
           </div>
         )}
-        {view === "map" ? (
-          <MindMap
-            title={task.title}
-            notes={editor.getJSON()}
-            onEdit={(pos) => {
-              setView("notes");
-              requestAnimationFrame(() => {
-                editor
-                  .chain()
-                  .focus()
-                  .setTextSelection(
-                    Math.min(pos + 2, editor.state.doc.content.size),
-                  )
-                  .run();
-                expandSelectionAncestors(editor);
-              });
-            }}
-            onFold={(pos) => {
-              const node = editor.state.doc.nodeAt(pos);
-              if (node?.type.name === "listItem")
-                editor.view.dispatch(
-                  editor.state.tr.setNodeMarkup(pos, undefined, {
-                    ...node.attrs,
-                    collapsed: !node.attrs.collapsed,
-                  }),
-                );
-            }}
-          />
-        ) : (
-          <div className="task-notes-scroll" onClick={() => setPalette(null)}>
-            <div className="task-notes-page">
-              <input
-                className="task-notes-title"
-                aria-label="笔记标题"
-                placeholder="新任务"
-                value={task.title}
-                onChange={(event) =>
-                  onUpdate(task.id, { title: event.target.value })
-                }
-              />
-              <EditorContent editor={editor} />
+        <div className="notes-surface" ref={surface}>
+          {view === "map" ? (
+            <MindMap
+              title={task.title}
+              notes={editor.getJSON()}
+              onEdit={(pos) => {
+                setView("notes");
+                requestAnimationFrame(() => {
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection(
+                      Math.min(pos + 2, editor.state.doc.content.size),
+                    )
+                    .run();
+                  expandSelectionAncestors(editor);
+                });
+              }}
+              onFold={(pos) => {
+                const node = editor.state.doc.nodeAt(pos);
+                if (node?.type.name === "listItem")
+                  editor.view.dispatch(
+                    editor.state.tr.setNodeMarkup(pos, undefined, {
+                      ...node.attrs,
+                      collapsed: !node.attrs.collapsed,
+                    }),
+                  );
+              }}
+            />
+          ) : (
+            <div className="task-notes-scroll" onClick={() => setPalette(null)}>
+              <div className="task-notes-page">
+                <input
+                  className="task-notes-title"
+                  aria-label="笔记标题"
+                  placeholder="新任务"
+                  value={task.title}
+                  onChange={(event) =>
+                    onUpdate(task.id, { title: event.target.value })
+                  }
+                />
+                <EditorContent editor={editor} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
         <input
           ref={fileInput}
           type="file"
@@ -471,6 +476,6 @@ export default function TaskNotes({
           }}
         />
       </section>
-    </div>
+    </Overlay>
   );
 }

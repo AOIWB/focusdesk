@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { useState } from "react";
 import { X, NotebookPen, Trash2 } from "lucide-react";
 import FolderLinks, { folderPaths } from "./FolderLinks";
@@ -63,7 +64,7 @@ export default function EventEditor({
     if (notes) onNotes({ ...value, id, seriesId: undefined });
   }
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <Overlay className="modal-backdrop" onClick={onClose}>
       <form
         className="modal event-editor"
         role="dialog"
@@ -303,6 +304,6 @@ export default function EventEditor({
           </button>
         </div>
       </form>
-    </div>
+    </Overlay>
   );
 }

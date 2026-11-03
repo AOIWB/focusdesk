@@ -14,6 +14,12 @@
 
 
 
+## Mac 动效试用版（0.5.1）
+
+统一加入弹窗进入/退出、侧边栏伸缩、视图切换、日期方向切换、笔记折叠、节点出现/消失、连线延伸、导图分支位置调整，以及灵感星点悬停微光。拖动保持实时响应，动画不延迟数据保存。尊重系统「减少动态效果」。
+
+按当前开发约定，后续默认只构建与验证 macOS；Windows/Linux 构建暂停，待明确要求后再恢复。
+
 ## 已实现
 
 - 四象限 / 大纲笔记双视图，共用同一份任务数据，切换时保留位置、大小、日期和文件夹。
@@ -158,7 +164,7 @@ npm run build
 npm run tauri build
 ```
 
-桌面产物在 `src-tauri/target/release/bundle/`。`.github/workflows/build.yml` 在 macOS、Windows、Ubuntu 上构建并上传安装包，推送仓库到 GitHub 后即可运行。当前工作流不包含平台签名和公证；公开发布正式安装包时可接入相应签名凭据。
+桌面产物在 `src-tauri/target/release/bundle/`。`.github/workflows/build.yml` 当前仅构建 macOS 并上传安装包。当前工作流不包含平台签名和公证；公开发布正式安装包时可接入相应签名凭据。
 
 ## 项目结构
 

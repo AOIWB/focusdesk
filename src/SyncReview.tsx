@@ -1,3 +1,4 @@
+import { Overlay } from "./Motion";
 import { useState } from "react";
 import { mergeDocuments, type SyncConflict } from "./syncModel";
 import type { SyncPlan } from "./sync";
@@ -38,7 +39,7 @@ export default function SyncReview({
       $record: "删除与修改",
     })[c.field] || c.field;
   return (
-    <div className="modal-backdrop">
+    <Overlay className="modal-backdrop">
       <section
         className="sync-review"
         role="dialog"
@@ -103,6 +104,6 @@ export default function SyncReview({
           </button>
         </div>
       </section>
-    </div>
+    </Overlay>
   );
 }

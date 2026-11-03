@@ -1,12 +1,25 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Editor } from "@tiptap/core";
 import TaskNotes from "./TaskNotes";
 import { notesExtensions } from "./notesEditor";
 import { notesLinks, notesMarkdown } from "./notes";
 
+// happy-dom rejects canceled native animations even when the browser would not
+// expose an unobserved finished promise. Keep these tests focused on editing.
+const nativeAnimate = Element.prototype.animate;
+beforeEach(() => {
+  vi.spyOn(Element.prototype, "animate").mockImplementation(function (
+    this: Element,
+    ...args
+  ) {
+    const animation = nativeAnimate.apply(this, args);
+    void animation.finished.catch(() => {});
+    return animation;
+  });
+});
 afterEach(() => vi.restoreAllMocks());
 
 it("正文链接在原段落内识别，导出与搜索保留地址", () => {

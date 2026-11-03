@@ -1,3 +1,5 @@
+import { AnimatePresence, motion } from "motion/react";
+import { ease } from "./Motion";
 import {
   useEffect,
   useMemo,
@@ -164,7 +166,13 @@ export default function MindMap({
               y1 = p ? p.y : 0,
               x2 = n.x - n.side * 90;
             return (
-              <path
+              <motion.path
+                initial={{ opacity: 0 }}
+                animate={{
+                  opacity: 1,
+                  d: `M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${n.y} ${x2},${n.y}`,
+                }}
+                transition={{ duration: 0.24, ease }}
                 key={n.id}
                 d={`M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${n.y} ${x2},${n.y}`}
                 fill="none"
@@ -176,42 +184,51 @@ export default function MindMap({
           <foreignObject x="-115" y="-40" width="230" height="80">
             <div className="mindmap-root">{title || "任务笔记"}</div>
           </foreignObject>
-          {nodes.map((n) => (
-            <g key={n.id} data-map-node="true">
-              <foreignObject
-                x={n.x - 90}
-                y={n.y - n.height / 2}
-                width="180"
-                height={n.height}
+          <AnimatePresence initial={false}>
+            {nodes.map((n) => (
+              <motion.g
+                key={n.id}
+                data-map-node="true"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, x: n.x, y: n.y }}
+                exit={{ opacity: 0, pointerEvents: "none" }}
+                transition={{ duration: 0.24, ease }}
               >
-                <button
-                  className="mindmap-node"
-                  aria-label={`编辑笔记：${n.content.map(notesText).join(" ") || "空白条目"}`}
-                  onClick={() => onEdit(n.pos)}
-                >
-                  {n.content.map((c, i) => (
-                    <Rich key={i} node={c} />
-                  ))}
-                </button>
-              </foreignObject>
-              {!!n.children.length && (
                 <foreignObject
-                  x={n.x + n.side * 102 - 12}
-                  y={n.y - 12}
-                  width="24"
-                  height="24"
+                  x={-90}
+                  y={-n.height / 2}
+                  width="180"
+                  height={n.height}
                 >
                   <button
-                    className="mindmap-fold"
-                    aria-label={`${n.collapsed ? "展开" : "折叠"}分支：${n.content.map(notesText).join(" ")}`}
-                    onClick={() => onFold(n.pos)}
+                    className="mindmap-node"
+                    aria-label={`编辑笔记：${n.content.map(notesText).join(" ") || "空白条目"}`}
+                    onClick={() => onEdit(n.pos)}
                   >
-                    {n.collapsed ? "+" : "−"}
+                    {n.content.map((c, i) => (
+                      <Rich key={i} node={c} />
+                    ))}
                   </button>
                 </foreignObject>
-              )}
-            </g>
-          ))}
+                {!!n.children.length && (
+                  <foreignObject
+                    x={n.side * 102 - 12}
+                    y={-12}
+                    width="24"
+                    height="24"
+                  >
+                    <button
+                      className="mindmap-fold"
+                      aria-label={`${n.collapsed ? "展开" : "折叠"}分支：${n.content.map(notesText).join(" ")}`}
+                      onClick={() => onFold(n.pos)}
+                    >
+                      {n.collapsed ? "+" : "−"}
+                    </button>
+                  </foreignObject>
+                )}
+              </motion.g>
+            ))}
+          </AnimatePresence>
         </g>
       </svg>
     </div>
