@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   ArrowUp,
+  CalendarDays,
   NotebookPen,
   Check,
   CheckCheck,
@@ -39,7 +40,8 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import {
   clamp,
   initialWorkspace,
-  localParse,
+  makeEvent,
+  type CalendarEvent,
   makeTask,
   nodeDiameter,
   pointToQuadrant,
@@ -50,13 +52,26 @@ import {
   type Workspace,
 } from "./model";
 import { loadWorkspace, saveWorkspace } from "./storage";
-import { completion, parseTasks } from "./ai";
+import { completion } from "./ai";
 import Outline from "./Outline";
+import Calendar from "./CalendarView";
+import EventEditor from "./EventEditor";
+import {
+  dateKey,
+  defaultSchedule,
+  scheduleLabel,
+  validSchedule,
+  type Schedule,
+  type CalendarMode,
+} from "./calendar";
+import { parseIntake, type IntakeMode } from "./intake";
 import { TaskGraph, TaskConnections } from "./Graph";
 import GlobalSearch from "./GlobalSearch";
 import ProjectEditor from "./ProjectEditor";
 import {
   graphLinks,
+  eventDetails,
+  eventSearchText,
   projectNames,
   renameProject,
   deleteProject,
@@ -75,12 +90,20 @@ const TaskNotes = lazy(() => import("./TaskNotes"));
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
   const [notesTaskId, setNotesTaskId] = useState<string | null>(null);
-  const notesTask = workspace.tasks.find((task) => task.id === notesTaskId);
+  const notesTask =
+    workspace.tasks.find((task) => task.id === notesTaskId) ??
+    workspace.events.find((event) => event.id === notesTaskId);
+  const [eventDraft, setEventDraft] = useState<CalendarEvent | null>(null);
+  const [calendarDay, setCalendarDay] = useState(dateKey(new Date()));
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>("auto");
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [view, setView] = useState<"board" | "outline" | "done">("board");
+  const [view, setView] = useState<"board" | "outline" | "done" | "calendar">(
+    "board",
+  );
   const [project, setProject] = useState<string | null>("");
   const projectLabel = project === null ? "未分类" : project;
   const taskProject = project ?? "";
@@ -155,6 +178,7 @@ export default function App() {
         setGlobalSearch(false);
         setProjectEditor(null);
         setConnectSource(null);
+        setEventDraft(null);
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
@@ -219,6 +243,12 @@ export default function App() {
       } else notify("请选择同象限的另一项任务");
     } else setSelected((current) => (current === id ? null : id));
   }
+  const projectCount = (name: string) =>
+    view === "calendar"
+      ? workspace.events.filter(
+          (e) => eventDetails(workspace, e).project === name,
+        ).length
+      : workspace.tasks.filter((t) => !t.done && t.project === name).length;
   const pending = workspace.tasks.filter((t) => !t.done).length;
   const completed = workspace.tasks.filter((t) => t.done).length;
   function addTasks(values: (Partial<Task> & Pick<Task, "title">)[]) {
@@ -248,19 +278,73 @@ export default function App() {
     const source = input.trim();
     setBusy(true);
     try {
-      const tasks = workspace.config.model.trim()
-        ? await parseTasks(source, workspace.config)
-        : [localParse(source)];
-      addTasks(tasks);
+      const items = await parseIntake(
+        source,
+        workspace.tasks,
+        workspace.config,
+        intakeMode,
+      );
+      const tasks = items
+        .filter((item) => item.kind === "task")
+        .map((item) => item.value);
+      const events = items
+        .filter((item) => item.kind === "event")
+        .map((item) =>
+          makeEvent({
+            ...item.value,
+            project: item.value.project || taskProject,
+          }),
+        );
+      if (tasks.length) addTasks(tasks);
+      if (events.length) {
+        setWorkspace((w) => ({ ...w, events: [...w.events, ...events] }));
+        setCalendarDay(events[0].start.slice(0, 10));
+        setCalendarMode("day");
+        setView("calendar");
+        setProject("");
+        setQuery("");
+        setSelected(null);
+      } else if (view === "calendar") setView("board");
       setInput("");
       notify(
-        `已添加 ${tasks.length} 个任务${workspace.config.model.trim() ? " · AI 已整理" : " · 可点击圆点继续编辑"}`,
+        [
+          tasks.length ? `已添加 ${tasks.length} 个任务` : "",
+          events.length
+            ? `已添加 ${events.length} 项日程 · ${scheduleLabel(events[0])}${events[0].taskId ? " · 已关联任务" : ""}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("；"),
       );
     } catch (e) {
       notify(`创建失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
+  }
+  function newEvent(
+    schedule: Schedule = defaultSchedule(calendarDay),
+    task?: Task,
+  ) {
+    setEventDraft(
+      makeEvent({
+        ...schedule,
+        title: task?.title || "",
+        taskId: task?.id,
+        project: task?.project || taskProject,
+      }),
+    );
+    setSelected(null);
+  }
+  function saveEvent(event: CalendarEvent) {
+    setWorkspace((w) => ({
+      ...w,
+      events: w.events.some((e) => e.id === event.id)
+        ? w.events.map((e) => (e.id === event.id ? event : e))
+        : [...w.events, event],
+    }));
+    setCalendarDay(event.start.slice(0, 10));
+    setEventDraft(null);
   }
   function startGesture(event: PointerEvent, task: Task) {
     if (event.button !== 0) return;
@@ -343,7 +427,8 @@ export default function App() {
   }
   function exportData() {
     const data = {
-      version: 2,
+      version: 3,
+      events: workspace.events,
       tasks: workspace.tasks,
       projects,
       links: workspace.links,
@@ -358,7 +443,7 @@ export default function App() {
     link.download = "pinecone-backup.json";
     link.click();
     URL.revokeObjectURL(url);
-    notify("已导出任务与模型设置（不包含 API Key）");
+    notify("已导出任务、日程与模型设置（不包含 API Key）");
   }
   async function importData(file?: File) {
     if (!file) return;
@@ -377,8 +462,19 @@ export default function App() {
         )
       )
         throw new Error("文件不是有效的 松果 Pinecone 备份");
+      if (
+        data.events !== undefined &&
+        (!Array.isArray(data.events) ||
+          !data.events.every(
+            (event: CalendarEvent) =>
+              typeof event.id === "string" &&
+              typeof event.title === "string" &&
+              validSchedule(event),
+          ))
+      )
+        throw new Error("备份中的日程时间无效");
       setWorkspace((w) => mergeWorkspace(w, data));
-      notify("备份已合并，相同任务不会重复添加");
+      notify("备份已合并，相同任务和日程不会重复添加");
     } catch (e) {
       notify(`导入失败：${String(e)}`);
     }
@@ -447,7 +543,7 @@ export default function App() {
               inputRef.current?.focus();
             }}
           >
-            <Plus size={18} /> 新建任务
+            <Plus size={18} /> 快速记录
           </button>
           <div className="nav-caption">工作空间</div>
           <button
@@ -480,6 +576,17 @@ export default function App() {
           >
             <CheckCheck size={18} /> 已完成 <span>{completed}</span>
           </button>
+          <button
+            className={`nav-item ${view === "calendar" && project === "" ? "chosen" : ""}`}
+            onClick={() => {
+              setView("calendar");
+              setProject("");
+              setQuery("");
+              setSelected(null);
+            }}
+          >
+            <CalendarDays size={18} /> 日历
+          </button>
           <div className="nav-caption projects-heading">
             我的项目
             <button
@@ -502,9 +609,7 @@ export default function App() {
             >
               <i style={{ background: "#a6abb3" }} />
               未分类
-              <span>
-                {workspace.tasks.filter((t) => !t.done && !t.project).length}
-              </span>
+              <span>{projectCount("")}</span>
             </button>
           </div>
           {projects.map((name, i) => (
@@ -524,12 +629,7 @@ export default function App() {
                   }}
                 />
                 {name}
-                <span>
-                  {
-                    workspace.tasks.filter((t) => !t.done && t.project === name)
-                      .length
-                  }
-                </span>
+                <span>{projectCount(name)}</span>
               </button>
               <button
                 className="icon-button project-edit"
@@ -573,7 +673,12 @@ export default function App() {
             <strong>
               {view === "done"
                 ? "已完成"
-                : projectLabel || (view === "outline" ? "笔记" : "四象限")}
+                : projectLabel ||
+                  (view === "calendar"
+                    ? "日历"
+                    : view === "outline"
+                      ? "笔记"
+                      : "四象限")}
             </strong>
           </div>
           <div className="top-actions">
@@ -607,10 +712,15 @@ export default function App() {
           <h1>
             {view === "done"
               ? "已完成"
-              : projectLabel || (view === "outline" ? "笔记" : "四象限")}
+              : projectLabel ||
+                (view === "calendar"
+                  ? "日历"
+                  : view === "outline"
+                    ? "笔记"
+                    : "四象限")}
           </h1>
           <div className="heading-actions">
-            {view !== "done" && (
+            {view !== "done" && view !== "calendar" && (
               <div className="view-switch" role="group" aria-label="切换视图">
                 <button
                   className={view === "outline" ? "active" : ""}
@@ -641,13 +751,28 @@ export default function App() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索任务"
-                aria-label="搜索任务"
+                placeholder={view === "calendar" ? "搜索日程" : "搜索任务"}
+                aria-label={view === "calendar" ? "搜索日程" : "搜索任务"}
               />
             </label>
           </div>
         </section>
-        {view === "board" ? (
+        {view === "calendar" ? (
+          <Calendar
+            events={workspace.events.filter(
+              (event) =>
+                (project === "" ||
+                  eventDetails(workspace, event).project === taskProject) &&
+                matchesSearch(eventSearchText(workspace, event), query),
+            )}
+            day={calendarDay}
+            mode={calendarMode}
+            onDay={setCalendarDay}
+            onMode={setCalendarMode}
+            onCreate={newEvent}
+            onOpen={setEventDraft}
+          />
+        ) : view === "board" ? (
           <div className="board-shell">
             <div
               className="board"
@@ -900,6 +1025,23 @@ export default function App() {
                       }
                     />
                   </label>
+                  <button
+                    className="task-schedule-button"
+                    onClick={() => newEvent(defaultSchedule(), active)}
+                  >
+                    <CalendarDays size={15} />
+                    安排时间
+                  </button>
+                  <div className="task-schedule-list">
+                    {workspace.events
+                      .filter((e) => e.taskId === active.id)
+                      .sort((a, b) => a.start.localeCompare(b.start))
+                      .map((e) => (
+                        <button key={e.id} onClick={() => setEventDraft(e)}>
+                          {scheduleLabel(e)} · {e.title}
+                        </button>
+                      ))}
+                  </div>
                   <TaskConnections
                     key={active.id}
                     task={active}
@@ -985,6 +1127,7 @@ export default function App() {
             projects={projects}
             onUpdate={updateTask}
             onOpenNotes={setNotesTaskId}
+            onSchedule={(task) => newEvent(defaultSchedule(), task)}
             onCreate={(quadrant) => {
               const task = makeTask({
                 title: "",
@@ -1062,7 +1205,7 @@ export default function App() {
           <div className={`composer ${busy ? "is-busy" : ""}`}>
             <textarea
               ref={inputRef}
-              aria-label="输入任务"
+              aria-label="输入任务或日程"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -1075,7 +1218,7 @@ export default function App() {
                   void submit();
                 }
               }}
-              placeholder="输入任务…"
+              placeholder="记下任务，或说：明天上午十点到十二点上课…"
               rows={1}
             />
             <div className="composer-bottom">
@@ -1084,10 +1227,20 @@ export default function App() {
                 {workspace.config.model || "本地快速记录"}
                 <ChevronRight size={12} />
               </button>
-              <div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <select
+                  className="intake-mode"
+                  aria-label="记录类型"
+                  value={intakeMode}
+                  onChange={(e) => setIntakeMode(e.target.value as IntakeMode)}
+                >
+                  <option value="auto">自动识别</option>
+                  <option value="task">任务</option>
+                  <option value="event">日程</option>
+                </select>
                 <button
                   className="send-button"
-                  aria-label="创建任务"
+                  aria-label="添加记录"
                   disabled={busy || !input.trim()}
                   onClick={() => void submit()}
                 >
@@ -1107,11 +1260,42 @@ export default function App() {
           <TaskNotes
             key={notesTask.id}
             task={notesTask}
-            onUpdate={updateTask}
+            onUpdate={(id, change) => {
+              if (workspace.tasks.some((t) => t.id === id))
+                updateTask(id, change);
+              else
+                setWorkspace((w) => ({
+                  ...w,
+                  events: w.events.map((e) =>
+                    e.id === id ? { ...e, ...change } : e,
+                  ),
+                }));
+            }}
             onClose={() => setNotesTaskId(null)}
             onError={notify}
           />
         </Suspense>
+      )}
+      {eventDraft && (
+        <EventEditor
+          key={eventDraft.id}
+          event={eventDraft}
+          tasks={workspace.tasks}
+          projects={projects}
+          existing={workspace.events.some((e) => e.id === eventDraft.id)}
+          onClose={() => setEventDraft(null)}
+          onSave={saveEvent}
+          onDelete={() => {
+            setWorkspace((w) => ({
+              ...w,
+              events: w.events.filter((e) => e.id !== eventDraft.id),
+            }));
+            setEventDraft(null);
+          }}
+          onNotes={(event) => setNotesTaskId(event.taskId || event.id)}
+          onFolder={(path) => void launchFolder(path)}
+          onError={notify}
+        />
       )}
       {notice && (
         <div className="toast" role="status">
@@ -1125,6 +1309,15 @@ export default function App() {
         <GlobalSearch
           workspace={workspace}
           onClose={() => setGlobalSearch(false)}
+          onEvent={(event) => {
+            setGlobalSearch(false);
+            setProject("");
+            setQuery("");
+            setView("calendar");
+            setCalendarDay(event.start.slice(0, 10));
+            setCalendarMode("day");
+            setEventDraft(event);
+          }}
           onTask={(task) => {
             setGlobalSearch(false);
             setProject("");

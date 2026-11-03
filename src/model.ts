@@ -15,6 +15,32 @@ export interface Task {
   done: boolean;
   createdAt: string;
 }
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  description: string;
+  notes?: TaskNotes;
+  project: string;
+  folder: string;
+  taskId?: string;
+  createdAt: string;
+}
+export type NoteDocument = Pick<Task, "id" | "title" | "notes" | "project">;
+export function makeEvent(
+  values: Pick<CalendarEvent, "title" | "start" | "end"> &
+    Partial<CalendarEvent>,
+): CalendarEvent {
+  return {
+    id: crypto.randomUUID(),
+    description: "",
+    project: "",
+    folder: "",
+    createdAt: new Date().toISOString(),
+    ...values,
+  };
+}
 export interface ModelConfig {
   url: string;
   key: string;
@@ -30,6 +56,7 @@ export interface Workspace {
   links: TaskLink[];
   manualQuadrants: Quadrant[];
   tasks: Task[];
+  events: CalendarEvent[];
   config: ModelConfig;
   welcomed: boolean;
 }
@@ -85,6 +112,7 @@ export const initialWorkspace = (): Workspace => ({
   projects: ["工作", "个人成长", "生活"],
   links: [],
   manualQuadrants: [],
+  events: [],
   tasks: [
     makeTask({
       title: "完成本周提案",

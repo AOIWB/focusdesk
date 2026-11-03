@@ -1,27 +1,41 @@
 import { notesText } from "./notes";
 import { useState } from "react";
-import { CheckCheck, Folder, Search, X } from "lucide-react";
-import { type Workspace, type Task, outlineGroups } from "./model";
+import { CheckCheck, CalendarDays, Folder, Search, X } from "lucide-react";
+import {
+  type Workspace,
+  type Task,
+  type CalendarEvent,
+  outlineGroups,
+} from "./model";
 import { searchWorkspace } from "./workspace";
 export default function GlobalSearch({
   workspace,
   onClose,
   onTask,
+  onEvent,
   onProject,
 }: {
   workspace: Workspace;
   onClose: () => void;
+  onEvent: (event: CalendarEvent) => void;
   onTask: (task: Task) => void;
   onProject: (name: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const result = searchWorkspace(workspace, query);
   const [cursor, setCursor] = useState(0);
-  const count = result.projects.length + result.tasks.length;
+  const count =
+    result.projects.length + result.tasks.length + result.events.length;
   function pick(index: number) {
     if (index < result.projects.length) onProject(result.projects[index]);
     else if (result.tasks[index - result.projects.length])
       onTask(result.tasks[index - result.projects.length]);
+    else if (
+      result.events[index - result.projects.length - result.tasks.length]
+    )
+      onEvent(
+        result.events[index - result.projects.length - result.tasks.length],
+      );
   }
   function excerpt(task: Task) {
     const text = [
@@ -127,10 +141,27 @@ export default function GlobalSearch({
                   </div>
                 </button>
               ))}
+              {result.events.map((event, i) => (
+                <button
+                  key={event.id}
+                  className={`global-result ${cursor === result.projects.length + result.tasks.length + i ? "focused" : ""}`}
+                  onClick={() => onEvent(event)}
+                >
+                  <CalendarDays size={18} />
+                  <div>
+                    <strong>{event.title}</strong>
+                    <p>{event.description}</p>
+                    <span>
+                      日程 · {event.start.replace("T", " ")} —{" "}
+                      {event.end.replace("T", " ")}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </>
           ) : (
             <div className="search-placeholder">
-              搜索任务、笔记、项目、日期、文件夹路径
+              搜索任务、日程、笔记、项目、日期、文件夹路径
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
+  CalendarDays,
   NotebookPen,
   ChevronDown,
   ChevronRight,
@@ -26,6 +27,7 @@ interface Props {
   onDelete: (id: string) => void;
   onPickFolder: (task: Task) => void;
   onOpenFolder: (path: string) => void;
+  onSchedule: (task: Task) => void;
   onOpenNotes: (id: string) => void;
 }
 export default function Outline({
@@ -38,6 +40,7 @@ export default function Outline({
   onPickFolder,
   onOpenFolder,
   onOpenNotes,
+  onSchedule,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -201,6 +204,13 @@ export default function Outline({
                           className="outline-task-details"
                           id={`task-details-${task.id}`}
                         >
+                          <button
+                            className="task-schedule-button"
+                            onClick={() => onSchedule(task)}
+                          >
+                            <CalendarDays size={15} />
+                            安排时间
+                          </button>
                           <button
                             className="open-task-notes"
                             onClick={() => onOpenNotes(task.id)}

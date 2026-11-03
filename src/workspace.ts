@@ -1,6 +1,7 @@
 import { notesText } from "./notes";
 import {
   type Workspace,
+  type CalendarEvent,
   type Task,
   type TaskLink,
   type Quadrant,
@@ -9,9 +10,11 @@ import {
 export function projectNames(workspace: Workspace) {
   return [
     ...new Set(
-      [...workspace.projects, ...workspace.tasks.map((t) => t.project)].filter(
-        Boolean,
-      ),
+      [
+        ...workspace.projects,
+        ...workspace.tasks.map((t) => t.project),
+        ...workspace.events.map((e) => e.project),
+      ].filter(Boolean),
     ),
   ];
 }
@@ -19,6 +22,12 @@ export function normalizeWorkspace(data: Workspace): Workspace {
   const workspace = {
     ...data,
     projects: data.projects ?? [],
+    events: (data.events ?? []).map((event) => ({
+      ...event,
+      taskId: data.tasks.some((t) => t.id === event.taskId)
+        ? event.taskId
+        : undefined,
+    })),
     links: data.links ?? [],
     manualQuadrants: data.manualQuadrants ?? [],
   };
@@ -31,6 +40,9 @@ export function renameProject(
 ): Workspace {
   return {
     ...workspace,
+    events: workspace.events.map((e) =>
+      e.project === from ? { ...e, project: to } : e,
+    ),
     projects: projectNames(workspace).map((p) => (p === from ? to : p)),
     tasks: workspace.tasks.map((t) =>
       t.project === from ? { ...t, project: to } : t,
@@ -40,6 +52,9 @@ export function renameProject(
 export function deleteProject(workspace: Workspace, name: string): Workspace {
   return {
     ...workspace,
+    events: workspace.events.map((e) =>
+      e.project === name ? { ...e, project: "" } : e,
+    ),
     projects: projectNames(workspace).filter((p) => p !== name),
     tasks: workspace.tasks.map((t) =>
       t.project === name ? { ...t, project: "" } : t,
@@ -194,8 +209,11 @@ export function matchesSearch(text: string, query: string) {
     .every((word) => normalized.includes(word));
 }
 export function searchWorkspace(workspace: Workspace, query: string) {
-  if (!query.trim()) return { tasks: [], projects: [] };
+  if (!query.trim()) return { tasks: [], projects: [], events: [] };
   return {
+    events: workspace.events.filter((e) =>
+      matchesSearch(eventSearchText(workspace, e), query),
+    ),
     tasks: workspace.tasks.filter((t) =>
       matchesSearch(taskSearchText(t), query),
     ),
@@ -217,6 +235,12 @@ export function mergeWorkspace(
   return normalizeWorkspace({
     ...workspace,
     tasks,
+    events: [
+      ...workspace.events,
+      ...data.events.filter(
+        (e) => !workspace.events.some((old) => old.id === e.id),
+      ),
+    ],
     projects: [...workspace.projects, ...data.projects],
     manualQuadrants: [
       ...new Set([...workspace.manualQuadrants, ...data.manualQuadrants]),
@@ -238,7 +262,42 @@ export function mergeWorkspace(
 export function removeTask(workspace: Workspace, id: string): Workspace {
   return {
     ...workspace,
+    events: workspace.events.map((e) =>
+      e.taskId === id
+        ? { ...eventDetails(workspace, e), taskId: undefined }
+        : e,
+    ),
     tasks: workspace.tasks.filter((t) => t.id !== id),
     links: workspace.links.filter((l) => l.source !== id && l.target !== id),
   };
+}
+
+export function eventDetails(
+  workspace: Workspace,
+  event: CalendarEvent,
+): CalendarEvent {
+  const task = workspace.tasks.find((t) => t.id === event.taskId);
+  return task
+    ? {
+        ...event,
+        notes: task.notes,
+        folder: task.folder,
+        project: task.project,
+      }
+    : event;
+}
+export function eventSearchText(workspace: Workspace, event: CalendarEvent) {
+  const value = eventDetails(workspace, event);
+  const task = workspace.tasks.find((t) => t.id === event.taskId);
+  return [
+    value.title,
+    value.description,
+    value.start,
+    value.end,
+    value.project,
+    value.folder,
+    notesText(value.notes),
+    task?.title,
+    "日程",
+  ].join("\n");
 }

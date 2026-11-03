@@ -17,7 +17,7 @@ import {
   Highlighter,
   Download,
 } from "lucide-react";
-import type { Task } from "./model";
+import type { NoteDocument } from "./model";
 import { emptyNotes, notesMarkdown } from "./notes";
 import {
   notesExtensions,
@@ -51,8 +51,8 @@ export default function TaskNotes({
   onClose,
   onError,
 }: {
-  task: Task;
-  onUpdate: (id: string, change: Partial<Task>) => void;
+  task: NoteDocument;
+  onUpdate: (id: string, change: Partial<NoteDocument>) => void;
   onClose: () => void;
   onError: (message: string) => void;
 }) {
