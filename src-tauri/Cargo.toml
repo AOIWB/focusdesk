@@ -1,6 +1,6 @@
 [package]
 name = "focusdesk"
-version = "0.2.0"
+version = "0.2.1"
 description = "A local-first quadrant workspace for your tasks and projects"
 authors = ["FocusDesk contributors"]
 license = "MIT"

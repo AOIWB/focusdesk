@@ -131,13 +131,17 @@ export default function Outline({
                     <article key={task.id} className="outline-task">
                       <div className="outline-task-row">
                         <button
-                          className="outline-bullet"
+                          className="outline-task-toggle"
                           title={`${expanded.has(task.id) ? "收起" : "展开"}${task.title || "新任务"}详情`}
                           aria-expanded={expanded.has(task.id)}
+                          aria-controls={`task-details-${task.id}`}
                           onClick={() => toggleTask(task.id)}
                         >
-                          <span />
+                          <ChevronRight size={15} />
                         </button>
+                        <span className="outline-bullet" aria-hidden="true">
+                          <span />
+                        </span>
                         <input
                           ref={(node) => {
                             if (node) fields.current.set(task.id, node);
@@ -178,6 +182,13 @@ export default function Outline({
                           </button>
                         )}
                         <button
+                          className="icon-button outline-open-notes"
+                          title={`打开${task.title || "新任务"}笔记`}
+                          onClick={() => onOpenNotes(task.id)}
+                        >
+                          <NotebookPen size={16} />
+                        </button>
+                        <button
                           className="icon-button outline-complete"
                           title={`完成${task.title}`}
                           onClick={() => onUpdate(task.id, { done: true })}
@@ -186,7 +197,10 @@ export default function Outline({
                         </button>
                       </div>
                       {expanded.has(task.id) && (
-                        <div className="outline-task-details">
+                        <div
+                          className="outline-task-details"
+                          id={`task-details-${task.id}`}
+                        >
                           <button
                             className="open-task-notes"
                             onClick={() => onOpenNotes(task.id)}
